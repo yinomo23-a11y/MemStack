@@ -13,15 +13,15 @@ from urllib.parse import urlsplit
 def configured():
     """Report configuration presence without importing adapters or contacting a server."""
     import config
-    return bool(os.environ.get('DSH_DISTILLATION_PROVIDER') or getattr(config, 'DISTILLATION_PROVIDER', '')
-                or os.environ.get('DSH_DISTILLATION_BASE_URL') or getattr(config, 'DISTILLATION_BASE_URL', '')
-                or os.environ.get('DSH_DISTILLATION_MODEL') or getattr(config, 'DISTILLATION_MODEL', ''))
+    return bool(os.environ.get('DISTILLATION_PROVIDER') or os.environ.get('DSH_DISTILLATION_PROVIDER') or getattr(config, 'DISTILLATION_PROVIDER', '')
+                or os.environ.get('DISTILLATION_BASE_URL') or os.environ.get('DSH_DISTILLATION_BASE_URL') or getattr(config, 'DISTILLATION_BASE_URL', '')
+                or os.environ.get('DISTILLATION_MODEL') or os.environ.get('DSH_DISTILLATION_MODEL') or getattr(config, 'DISTILLATION_MODEL', ''))
 
 
 def _http_provider():
     import config
-    base = (os.environ.get('DSH_DISTILLATION_BASE_URL') or getattr(config, 'DISTILLATION_BASE_URL', '')).strip()
-    model = (os.environ.get('DSH_DISTILLATION_MODEL') or getattr(config, 'DISTILLATION_MODEL', '')).strip()
+    base = (os.environ.get('DISTILLATION_BASE_URL') or os.environ.get('DSH_DISTILLATION_BASE_URL') or getattr(config, 'DISTILLATION_BASE_URL', '')).strip()
+    model = (os.environ.get('DISTILLATION_MODEL') or os.environ.get('DSH_DISTILLATION_MODEL') or getattr(config, 'DISTILLATION_MODEL', '')).strip()
     if not base and not model:
         return None
     if not base or not model:
@@ -103,7 +103,7 @@ def _http_provider():
 
 def load_provider():
     import config
-    spec = os.environ.get('DSH_DISTILLATION_PROVIDER') or getattr(config,'DISTILLATION_PROVIDER','')
+    spec = os.environ.get('DISTILLATION_PROVIDER') or os.environ.get('DSH_DISTILLATION_PROVIDER') or getattr(config,'DISTILLATION_PROVIDER','')
     if not spec:
         return _http_provider()
     if not re.fullmatch(r'[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*:[A-Za-z_]\w*',spec):

@@ -577,7 +577,11 @@ def write_handover(session_id, topic, emotion, pending_tail, trivia,
     #   怎么做：写完立刻用 read_handover 读一次，确认真的读得到。
     #   失败不抛（交接单不是关键路径），但要记日志 + 进 stats。
     try:
-        _got = read_handover(session_id, path=path, now=now)
+        if is_private:
+            _raw = (_load_db(path).get("sessions") or {}).get(_sid(session_id))
+            _got = _normalize_record(_raw, _sid(session_id)) if isinstance(_raw, dict) and _raw else None
+        else:
+            _got = read_handover(session_id, path=path, now=now)
         if _got is None:
             print("[handover] ⚠️ 写了但回读不到: session_id=%s path=%s"
                   % (session_id, path or "(默认)"))

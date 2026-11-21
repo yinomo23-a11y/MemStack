@@ -2166,6 +2166,8 @@ def _consolidate_locked() -> dict:
         try:
             import recall_audit as _ra
             stats["audit_pruned"] = int(_ra.prune())
+        except ModuleNotFoundError:
+            pass
         except Exception as exc:
             # 不抛，但必须留痕（静默失败比失败更糟）
             stats["audit_prune_error"] = "%s: %s" % (type(exc).__name__, exc)

@@ -40,13 +40,14 @@ import sys
 import json
 import time
 
+import config as _cfg
 from config import BASE_DIR
 STATE_PATH = os.path.join(BASE_DIR, "state", "last_maintenance.json")
 LOCK_PATH = os.path.join(BASE_DIR, "state", "maintenance.lock")
 
-MIN_GAP_HOURS = 20      # 两次维护至少隔这么久（防时钟回拨重复跑）
-RUN_HOUR_START = 6      # 早于这个点不跑（半夜别打扰）
-RUN_HOUR_END = 23       # 晚于这个点不跑
+MIN_GAP_HOURS = getattr(_cfg, "MAINTENANCE_MIN_GAP_HOURS", 20)      # 两次维护至少隔这么久（防时钟回拨重复跑）
+RUN_HOUR_START = getattr(_cfg, "MAINTENANCE_RUN_HOUR_START", 6)     # 早于这个点不跑（半夜别打扰）
+RUN_HOUR_END = getattr(_cfg, "MAINTENANCE_RUN_HOUR_END", 23)        # 晚于这个点不跑
 
 
 def _read_state() -> dict:
@@ -114,6 +115,16 @@ def _acquire_lock():
 
 
 def _pid_alive(pid: int) -> bool:
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except Exception:
+            return True
     try:
         import subprocess
         r = subprocess.run(
@@ -126,9 +137,10 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _release_lock(fd):
+    if fd is None:
+        return
     try:
-        if fd is not None:
-            os.close(fd)
+        os.close(fd)
     except Exception:
         pass
     try:

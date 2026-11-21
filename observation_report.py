@@ -15,7 +15,13 @@
 import sys, os, json, time
 from datetime import datetime, date
 
-from config import PROJECT_ROOT, PATROL_DIR
+from config import (
+    BASE_DIR,
+    LONG_TERM_ACTIVE_PATH,
+    LONG_TERM_COLD_PATH,
+    PATROL_DIR,
+    WORKING_MEM_PATH,
+)
 
 
 # __UTF8_STDOUT_GUARD__ (2026-11-07)
@@ -29,7 +35,7 @@ except Exception:
     pass
 
 
-BASE = PROJECT_ROOT
+BASE = BASE_DIR
 OUT_DIR = PATROL_DIR
 os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -51,9 +57,9 @@ def load_json(path, default=None):
 
 def memory_stats():
     """当前记忆库统计"""
-    a = load_json(os.path.join(BASE, 'active.json')).get('memories', [])
-    c = load_json(os.path.join(BASE, 'cold.json')).get('memories', [])
-    w = load_json(os.path.join(BASE, 'working_mem.json')).get('sessions', {})
+    a = load_json(LONG_TERM_ACTIVE_PATH).get('memories', [])
+    c = load_json(LONG_TERM_COLD_PATH).get('memories', [])
+    w = load_json(WORKING_MEM_PATH).get('sessions', {})
     wm = [m for s in w.values() for m in s.get('working_memory', [])]
 
     PIN = {'不朽', '核心事件', '重要约定', '身份信息', '固定规则', '安全红线', '人设相关'}
@@ -108,7 +114,8 @@ def consolidation_today():
     if not os.path.exists(path):
         return {'ran': False}
     today_str = datetime.now().strftime('%Y/%m/%d')
-    lines = open(path, encoding='utf-8', errors='replace').read().splitlines()
+    with open(path, encoding='utf-8', errors='replace') as f:
+        lines = f.read().splitlines()
     found = []
     for i, ln in enumerate(lines):
         if today_str in ln:

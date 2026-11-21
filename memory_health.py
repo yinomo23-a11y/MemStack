@@ -665,8 +665,7 @@ def find_merge_groups(memories: List[dict], sim_threshold: float = 0.82) -> List
             #   Jaccard 会漏掉「短句被长句包含」的重复（0.80 vs 1.00）；
             #   而单纯用包含度又会把「我不喜欢」vs「我喜欢」误判成重复，
             #   所以 _is_dup 内部还挡了一道极性。
-            sim = _containment(a, b)
-            if sim >= sim_threshold:
+            if _is_dup(a, b, sim_threshold):
                 similar.append(j)
         if similar:
             # 保留哪条：内容更长的（更全）

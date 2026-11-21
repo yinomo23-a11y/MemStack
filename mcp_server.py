@@ -107,7 +107,7 @@ def handle_request(req: dict):
 
     _check_refresh_cache()
     method = req.get("method")
-    params = req.get("params", {})
+    params = req.get("params") or {}
 
     if method == "initialize":
         import config
@@ -251,7 +251,7 @@ def handle_request(req: dict):
 
     if method == "tools/call":
         tool_name = params.get("name")
-        args = params.get("arguments", {})
+        args = params.get("arguments") or {}
 
         # ★ 2026-11-09 加：代码更新检测。
         #
@@ -325,9 +325,14 @@ def handle_request(req: dict):
                                "isError": True},
                 }
 
+            query = args.get("query")
+            if not isinstance(query, str) or not query.strip():
+                return {"jsonrpc": "2.0", "id": req["id"], "result": {
+                    "isError": True, "content": [{"type": "text", "text": "query is required"}]}}
+
             core = recall_core(
                 manager,
-                args["query"],
+                query,
                 emotion=args.get("emotion"),
                 entities=args.get("entities"),
                 embedding_func=get_embedding,

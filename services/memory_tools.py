@@ -114,7 +114,7 @@ def cold_search(manager, args, embedding_func):
         sources = load()
         sources.update({m.mem_id: m for m in [*archived, *active]})
         candidates = select(archived, context, pool="cold", sources=sources)
-        if find_slot(query):
+        if find_slot(query)[0]:
             candidates = [m for m in candidates if supports(vars(m), query)]
         if awake:
             candidates = [m for m in candidates if not m.session_id or m.session_id == session_id]

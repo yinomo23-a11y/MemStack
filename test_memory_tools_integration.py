@@ -226,6 +226,43 @@ def check_tools():
     rc, invalid = cli("retire", ids=[retired.mem_id])
     assert rc != 0 and not invalid["ok"], invalid
 
+    # Non-manual CLI add keeps stdout strictly JSON even if maintenance triggers, and writes working memory.
+    rc, added = cli("add", sessionId=session, content="普通工作记忆测试")
+    assert rc == 0 and added["ok"] and added.get("written") is True, added
+
+    # Missing associate_engine fails cleanly with JSON rather than a traceback.
+    rc, assoc = cli("associate", sessionId=session, query="还记得上次吗")
+    assert rc == 0 and not assoc["ok"] and assoc.get("removed") is True, assoc
+
+    # Private working memory retains is_private and never leaks into recall.
+    priv_out = api.manager.add_working_memory(session, "私密备注内容示例", is_private=True)
+    assert priv_out and priv_out.get("written") is True, priv_out
+    assert "私密备注内容示例" not in call("memory_recall", session_id=session, query="私密备注内容示例")[1]
+
+    # Private handover verifies cleanly on disk without being returned by read_handover.
+    import handover
+    handover.write_handover("private:public_demo", "普通话题", "", "", [])
+    priv_ho = handover.write_handover("private:secret_demo", "私密话题", "", "", [], is_private=True)
+    assert priv_ho.get("_verify") == "ok", priv_ho
+    assert (handover.read_handover("private:secret_demo") or {}).get("topic") != "私密话题"
+
+    # Observation report reads configured MEMORY_DATA_DIR pools.
+    import observation_report
+    assert observation_report.memory_stats()["active"] >= 1
+
+    # Contradictory long memories must not be grouped as merge duplicates.
+    import memory_health
+    contra = [
+        {"mem_id": "c1", "content": "我真的非常非常喜欢吃重庆麻辣火锅和烤肉"},
+        {"mem_id": "c2", "content": "我真的非常非常不喜欢吃重庆麻辣火锅和烤肉"},
+    ]
+    assert memory_health.find_merge_groups(contra) == []
+
+    # MCP missing query & null params return clean tool error / valid response.
+    err_missing, _ = call("memory_recall")
+    assert err_missing is True
+    assert api.handle_request({"jsonrpc": "2.0", "id": 99, "method": "tools/list", "params": None}).get("result")
+
 
 if __name__ == "__main__":
     if sys.argv[-1:] == ["--worker"]:

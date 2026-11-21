@@ -766,8 +766,10 @@ def main():
     _MAINT_ACTIONS = ("recall", "add", "init")
     if action in _MAINT_ACTIONS:
         try:
+            import contextlib
             import maintenance_trigger
-            maintenance_trigger.maybe_run()
+            with contextlib.redirect_stdout(sys.stderr):
+                maintenance_trigger.maybe_run()
         except Exception as _mte:
             # 维护触发失败不能影响这次调用
             print(f"[memory_cli] 维护触发异常（不影响主流程）: {_mte}",
@@ -1051,7 +1053,11 @@ def main():
                 return _out({"ok": True, "text": "", "items": [],
                              "triggered": False, "reason": "不是回忆场景"})
 
-            from associate_engine import associate, associate_to_text
+            try:
+                from associate_engine import associate, associate_to_text
+            except ModuleNotFoundError:
+                return _out({"ok": False, "error": "associate_engine 未包含在当前发布版中",
+                             "removed": True})
             mgr = MemoryManager(embedding_func=get_embedding, summarize_func=local_compress)
             from services.recall_policy import select, RecallContext
             from services.evidence_store import load as load_evidence

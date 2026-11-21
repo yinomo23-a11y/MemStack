@@ -809,8 +809,7 @@ class MemoryManager:
             raise ValueError('source_deleted')
         if kwargs.get("category") == "private" or kwargs.get("is_private") is True:
             kwargs = dict(kwargs)
-            kwargs.pop("is_private", None)
-            kwargs["category"] = "event"
+            kwargs["is_private"] = True
             from services.memory_tools import add_active
             operation_id = kwargs.pop("operation_id", None)
             return add_active(self, content, session_id, kwargs, operation_id)
@@ -913,6 +912,8 @@ class MemoryManager:
                         evicted.content, session_id=session_id, source=evicted.source,
                         tags=list(evicted.tags or []) + ['_从工作记忆降级'],
                         chunk_priority=evicted.chunk_priority, create_time=evicted.create_time,
+                        effective_from=getattr(evicted, 'effective_from', None),
+                        effective_to=getattr(evicted, 'effective_to', None),
                         operation_id=handoff_id)
                     handed_off = outcome.get('saved') or outcome.get('reason') == 'capacity_evicted'
                 if not handed_off:

@@ -1543,6 +1543,8 @@ class MemoryItem:
         speaker: str = '',
         source_message_id: str = '',
         attachment_index=None,
+        effective_from: Optional[float] = None,
+        effective_to: Optional[float] = None,
     ):
         # ★ 2026-11-03 修：原来只用毫秒时间戳做 ID，同毫秒创建的记忆全部撞号
         #   （实测 166 条里 148 条共用 mem_1793278780301）。
@@ -1833,8 +1835,9 @@ class MemoryItem:
         self.corrects = None
         self.corrected_at = None
         self.correction_reason = None
-        self.effective_from = None
-        self.effective_to = None
+        from services.evidence_semantics import annotate, timestamp as _parse_ts
+        self.effective_from = _parse_ts(effective_from) if effective_from is not None else None
+        self.effective_to = _parse_ts(effective_to) if effective_to is not None else None
         self.subject = None
         self.predicate = None
         self.distill_status = None
@@ -1845,7 +1848,6 @@ class MemoryItem:
         self.event_time = None
         self.user_confirmed = False
         self.classification_history = []
-        from services.evidence_semantics import annotate
         self.evidence_metadata = annotate(self.to_dict())
 
 
