@@ -263,6 +263,13 @@ def check_tools():
     assert err_missing is True
     assert api.handle_request({"jsonrpc": "2.0", "id": 99, "method": "tools/list", "params": None}).get("result")
 
+    # Reminder delegations classify as high-priority commitment, while negations/questions do not.
+    from schema import classify_importance
+    assert classify_importance("下周提醒我交报告")[0] == "commitment"
+    assert classify_importance("明天提醒我吃药")[0] == "commitment"
+    assert classify_importance("不用提醒我交报告")[0] != "commitment"
+    assert classify_importance("你会不会提醒我交报告")[0] != "commitment"
+
 
 if __name__ == "__main__":
     if sys.argv[-1:] == ["--worker"]:

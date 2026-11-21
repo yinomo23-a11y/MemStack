@@ -103,12 +103,22 @@ Action is `argv[1]`; the payload is JSON on stdin. Output is a single JSON line.
 # recall
 echo '{"sessionId":"s1","query":"上次说的那个项目"}' | python memory_cli.py recall
 
+# add to working memory (set isManual:true or effective_from/effective_to to persist directly to active)
+echo '{"sessionId":"s1","content":"第1周课表：周一上午高数","effective_from":1795000000,"effective_to":1795604800}' \
+  | python memory_cli.py add
+
 # add to the short-term buffer
-echo '{"sessionId":"s1","content":"他周五要交报告","tags":["工作"]}' \
+echo '{"sub":"add","sessionId":"s1","content":"他周五要交报告","tags":["工作"]}' \
   | python memory_cli.py shortterm
 
 # per-turn ledger append
-echo '{"sessionId":"s1","his":"在吗","said":"在"}' | python memory_cli.py window
+echo '{"sub":"append","sessionId":"s1","his":"在吗","said":"在"}' | python memory_cli.py window
+
+# optional distillation & skill cards (requires DISTILLATION_* provider + explicit review)
+echo '{"sub":"status","scope":"main"}' | python memory_cli.py distill
+echo '{"sub":"generate","scope":"main"}' | python memory_cli.py distill
+echo '{"sub":"review","scope":"main","card_id":"<id>","reviewer":"owner","approved":true}' | python memory_cli.py distill
+echo '{"sub":"match","scope":"main","text":"这是本周课表","has_image":true,"sessionId":"s1"}' | python memory_cli.py distill
 ```
 
 ### MCP server
@@ -117,8 +127,30 @@ echo '{"sessionId":"s1","his":"在吗","said":"在"}' | python memory_cli.py win
 python mcp_server.py
 ```
 
-The stdio server exposes recall, write, correction, feedback and session tools.
-Connect clients that may read and modify the configured store.
+The stdio server exposes 8 tools: `memory_runtime_status`, `memory_recall`,
+`memory_add`, `memory_correct`, `memory_recall_cold`,
+`memory_add_later_thought`, `memory_confirm_used`, and `memory_init_session`.
+Connect clients that may read and modify the configured store, for example:
+
+```json
+{
+  "mcpServers": {
+    "layered-memory": {
+      "command": "python",
+      "args": ["/absolute/path/to/layered-memory/mcp_server.py"],
+      "env": {
+        "MEMORY_DATA_DIR": "/absolute/path/to/memory-data"
+      }
+    }
+  }
+}
+```
+
+### Further documentation
+
+- [docs/模型原理说明.md](docs/模型原理说明.md) — Chinese overview, architecture, CLI/MCP quickstart, distillation & skill cards
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module boundaries and data flow
+- [docs/OPERATIONS.md](docs/OPERATIONS.md) — deployment, daily/weekly checks, backup, and failure signals
 
 ---
 

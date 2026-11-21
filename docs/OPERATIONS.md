@@ -21,7 +21,7 @@ with the data.
 Verify the round trip before wiring it into anything:
 
 ```bash
-echo '{"sessionId":"smoke","content":"smoke test entry","tags":["test"]}' \
+echo '{"sub":"add","sessionId":"smoke","content":"smoke test entry","tags":["test"]}' \
   | python memory_cli.py shortterm
 echo '{"sessionId":"smoke","query":"smoke test entry"}' \
   | python memory_cli.py recall
