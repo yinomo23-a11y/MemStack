@@ -97,7 +97,9 @@ python window_ledger.py      # runs its own assertions against a temp directory
 
 ### CLI
 
-Action is `argv[1]`; the payload is JSON on stdin. Output is a single JSON line.
+Pass the action as `argv[1]` and a JSON object on stdin. The CLI writes one JSON
+line to stdout and diagnostics to stderr. Invalid input returns `ok: false` and
+exit code 2.
 
 ```bash
 # recall

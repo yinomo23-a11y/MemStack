@@ -12,6 +12,11 @@ try:
 except Exception:
     pass
 
+# Reserve stdout for JSON-RPC replies before loading the memory store.
+if __name__ == "__main__":
+    _response_stdout = sys.stdout
+    sys.stdout = sys.stderr
+
 from memory_manager import (
     MemoryManager,
     add_later_thought,           # 2026-11-08 感受分层写入（memory_add_later_thought 用）
@@ -485,8 +490,8 @@ if __name__ == "__main__":
             req = json.loads(line)
             resp = handle_request(req)
             if resp is not None:
-                sys.stdout.write(json.dumps(resp, ensure_ascii=False) + "\n")
-                sys.stdout.flush()
+                _response_stdout.write(json.dumps(resp, ensure_ascii=False) + "\n")
+                _response_stdout.flush()
         except Exception as e:
             sys.stderr.write(f"MCP Server Error: {e}\n")
             sys.stderr.flush()
@@ -511,8 +516,8 @@ if __name__ == "__main__":
                             "data": str(e)[:300],
                         },
                     }
-                    sys.stdout.write(json.dumps(_err, ensure_ascii=False) + "\n")
-                    sys.stdout.flush()
+                    _response_stdout.write(json.dumps(_err, ensure_ascii=False) + "\n")
+                    _response_stdout.flush()
             except Exception:
                 # 连错误响应都发不出去就只能认了，别再抛
                 pass

@@ -21,6 +21,51 @@ class MemoryToolsTests(unittest.TestCase):
                                     encoding="utf-8", timeout=45)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_cli_rejects_invalid_json(self):
+        with tempfile.TemporaryDirectory() as folder:
+            for payload in ("{", "[]", "null", '{"query": NaN}'):
+                with self.subTest(payload=payload):
+                    result = self.run_entrypoint(folder, "memory_cli.py", payload, "recall")
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIs(json.loads(result.stdout)["ok"], False)
+            empty = self.run_entrypoint(folder, "memory_cli.py", "", "recall")
+            self.assertEqual(empty.returncode, 0)
+            self.assertIs(json.loads(empty.stdout)["ok"], True)
+
+    def test_entrypoints_keep_handover_diagnostics_out_of_json(self):
+        with tempfile.TemporaryDirectory() as folder:
+            handover = Path(folder) / "state" / "handover.json"
+            handover.parent.mkdir()
+            handover.write_text(json.dumps({"version": 1, "sessions": {
+                "session:a": {"topic": "Prepare the sample catalog", "written_at": int(time.time()), "seq": 1},
+                "session:b": {"topic": "Review the sample labels", "written_at": int(time.time()), "seq": 2},
+            }}), encoding="utf-8")
+            cli_args = {"profile_mode": "companion"}
+            request = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                "name": "memory_init_session", "arguments": cli_args,
+            }}
+            for store in ("multiple handovers", "malformed handover"):
+                with self.subTest(store=store):
+                    if store == "malformed handover":
+                        handover.write_text("{bad json", encoding="utf-8")
+                    cli = self.run_entrypoint(folder, "memory_cli.py", json.dumps(cli_args), "init")
+                    self.assertEqual(cli.returncode, 0, cli.stderr)
+                    self.assertIn("[handover]", cli.stderr)
+                    self.assertIs(json.loads(cli.stdout)["ok"], True)
+                    mcp = self.run_entrypoint(folder, "mcp_server.py", json.dumps(request) + "\n")
+                    self.assertEqual(mcp.returncode, 0, mcp.stderr)
+                    self.assertIn("[handover]", mcp.stderr)
+                    reply = json.loads(mcp.stdout)
+                    self.assertEqual(reply["id"], 1)
+                    self.assertIn("result", reply)
+
+    def run_entrypoint(self, folder, script, data, *args):
+        env = dict(os.environ, MEMORY_DATA_DIR=folder, PYTHONUTF8="1",
+                   MAINTENANCE_RUN_HOUR_START="24")
+        return subprocess.run([sys.executable, "-B", script, *args],
+                              cwd=Path(__file__).resolve().parent, env=env,
+                              input=data, capture_output=True, encoding="utf-8", timeout=45)
+
     def test_vector_cache_exact_and_invalidation(self):
         from services.vector_cache import load_pool
         with tempfile.TemporaryDirectory() as folder, patch("services.vector_cache._CACHE_MIN_BYTES", 0):

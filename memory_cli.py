@@ -9,7 +9,7 @@
 
 约定：
 - 只读写本目录下的记忆文件；绝不触碰 social-v2.json
-- 任何异常都返回 {"ok": false, "error": "..."}，退出码 0（bridge 侧 fail-open）
+- 错误返回 {"ok": false, "error": "..."}。无效输入的退出码为 2。
 """
 import json
 import sys
@@ -22,6 +22,12 @@ _timings = []
 
 def _mark(stage):
     _timings.append((stage, round((time.perf_counter() - _started) * 1000)))
+
+# Keep stdout reserved for JSON, including while importing the runtime.
+_response_stdout = None
+if __name__ == "__main__":
+    _response_stdout = sys.stdout
+    sys.stdout = sys.stderr
 
 from memory_manager import (
     MemoryManager,
@@ -39,7 +45,7 @@ from schema import MemoryItem
 _mark("imports")
 
 # Windows 下 Python 默认用 GBK 读写管道：bridge 传的是 UTF-8 JSON，必须显式改掉
-for _stream in (sys.stdin, sys.stdout, sys.stderr):
+for _stream in (sys.stdin, _response_stdout or sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
@@ -50,8 +56,9 @@ def _out(obj):
     if len(sys.argv) > 1 and sys.argv[1] in ("recall", "add"):
         _mark("output")
         print("[memory_cli] %s timings_ms=%s" % (sys.argv[1], _timings), file=sys.stderr)
-    sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    stream = _response_stdout or sys.stdout
+    stream.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    stream.flush()
 
 
 def _shortterm_cmd(sub: str, payload: dict):
@@ -730,18 +737,25 @@ def _rel_time(at: float, now: float) -> str:
     return f"{at_dt.strftime('%m-%d')}（{round(days / 30)} 个月前）"
 
 
+def _reject_json_constant(value):
+    raise ValueError(f"invalid JSON constant: {value}")
+
+
 def main():
     action = (sys.argv[1] if len(sys.argv) > 1 else "recall").strip().lower()
-    raw = ""
     try:
-        if not sys.stdin.isatty():
-            raw = sys.stdin.read()
-    except Exception:
-        raw = ""
+        raw = "" if sys.stdin.isatty() else sys.stdin.read()
+    except OSError:
+        _out({"ok": False, "error": "unable to read stdin"})
+        return 2
     try:
-        payload = json.loads(raw) if raw.strip() else {}
-    except Exception:
-        payload = {}
+        payload = json.loads(raw, parse_constant=_reject_json_constant) if raw.strip() else {}
+    except (ValueError, RecursionError):
+        _out({"ok": False, "error": "invalid JSON input"})
+        return 2
+    if not isinstance(payload, dict):
+        _out({"ok": False, "error": "input must be a JSON object"})
+        return 2
 
     # ── 每日维护的「活动触发」（2026-11-08 加）─────────────────────
     #   为什么挂在这里：memory_cli 是桥接每轮对话都会调的入口，
@@ -766,10 +780,8 @@ def main():
     _MAINT_ACTIONS = ("recall", "add", "init")
     if action in _MAINT_ACTIONS:
         try:
-            import contextlib
             import maintenance_trigger
-            with contextlib.redirect_stdout(sys.stderr):
-                maintenance_trigger.maybe_run()
+            maintenance_trigger.maybe_run()
         except Exception as _mte:
             # 维护触发失败不能影响这次调用
             print(f"[memory_cli] 维护触发异常（不影响主流程）: {_mte}",
