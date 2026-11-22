@@ -1,4 +1,4 @@
-# Layered Memory Model
+# 忆栈 MemStack
 
 A local-first, file-based memory system for long-running conversational agents.
 Three memory pools, decay, consolidation, recall routing, a nightly health
@@ -9,7 +9,7 @@ diff it, back it up with `cp -r`, and delete it without touching any other
 system.
 
 ```bash
-git clone https://github.com/yinomo23-a11y/layered-memory.git && cd layered-memory
+git clone https://github.com/yinomo23-a11y/MemStack.git && cd MemStack
 python -m pip install -r requirements.txt
 echo '{"sessionId":"demo","query":"hello"}' | python memory_cli.py recall
 ```
@@ -137,9 +137,9 @@ Connect clients that may read and modify the configured store, for example:
 ```json
 {
   "mcpServers": {
-    "layered-memory": {
+    "memstack": {
       "command": "python",
-      "args": ["/absolute/path/to/layered-memory/mcp_server.py"],
+      "args": ["/absolute/path/to/MemStack/mcp_server.py"],
       "env": {
         "MEMORY_DATA_DIR": "/absolute/path/to/memory-data"
       }
