@@ -68,6 +68,8 @@ def main():
     env.pop("DSH_MEMORY_DATA_DIR", None)  # privacy-scan: allow
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    # Keep the fresh-store checks independent of the host clock.
+    env["MAINTENANCE_RUN_HOUR_START"] = "24"
 
     def t01_boot():
         out = run_cli(env, "recall", {"sessionId": "e2e", "query": "hello"})
@@ -96,9 +98,10 @@ def main():
         return "written item is recallable"
 
     def t04_pools():
-        for name in ("active.json", "shortterm.json", "cold.json"):
-            assert os.path.exists(os.path.join(tmp, name)), name + " missing"
-        return "three pools exist"
+        assert os.path.isfile(os.path.join(tmp, "shortterm.json")), "shortterm.json missing"
+        for name in ("active.json", "cold.json"):
+            assert not os.path.exists(os.path.join(tmp, name)), name + " created before a pool write"
+        return "short-term write leaves the active and cold pools unmaterialized"
 
     def t05_window():
         out = run_cli(env, "window", {"sub": "append", "sessionId": "e2e",
@@ -170,7 +173,7 @@ def main():
         check("01 empty store boots and recalls", t01_boot)
         check("02 short-term write", t02_write)
         check("03 written item is recallable", t03_recall_hit)
-        check("04 pool structure", t04_pools)
+        check("04 on-demand pool creation", t04_pools)
         check("05 window ledger", t05_window)
         check("06 handover", t06_handover)
         check("07 consolidation preview", t07_consolidate)

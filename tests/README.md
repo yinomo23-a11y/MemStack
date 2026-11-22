@@ -54,7 +54,9 @@ The most important cross-module property is that **a fresh checkout works**.
 directory and require that
 
 1. recall returns an empty result with `ok: true` — not an error
-2. writing to the short-term pool succeeds and creates the pool files
+2. writing to the short-term pool creates `shortterm.json`. With automatic
+   maintenance disabled for this suite, the active and cold pools stay absent
+   until an operation writes them.
 3. what was written can be recalled
 4. the window ledger creates its files under `<data>/window`, with no extra
    `data/` layer
