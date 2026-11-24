@@ -124,9 +124,10 @@ makes the "forget well" claim safe to make.
 
 ## Strength and decay
 
-Every item carries `strength` and a timestamp. Strength governs **lifecycle
-only** (decay, short-term forgetting cutoff, and active-to-cold demotion) — it
-does not weight relevance ranking (`WEIGHT_STRENGTH = 0.0`). Decay is applied
+Every item carries `strength` and a timestamp. Both `strength` and idle age
+govern **lifecycle only** (decay, short-term forgetting cutoff, and
+active-to-cold demotion) — neither distorts relevance ranking
+(`WEIGHT_STRENGTH = 0.0`, `LAYER_DECAY_IN_RANKING = False`). Decay is applied
 lazily on read, using the elapsed time since the last computation, so there is
 no background process and no scheduler requirement.
 

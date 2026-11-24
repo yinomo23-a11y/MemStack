@@ -153,7 +153,16 @@ Connect clients that may read and modify the configured store, for example:
 - [docs/模型原理说明.md](docs/模型原理说明.md) — Chinese overview, architecture, CLI/MCP quickstart, distillation & skill cards
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module boundaries and data flow
 - [docs/OPERATIONS.md](docs/OPERATIONS.md) — deployment, daily/weekly checks, backup, and failure signals
-- [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — reproducible latency benchmarks and recall-ranking ablation results
+- [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — reproducible latency benchmarks (up to 10k items), real-store ablation, and LongMemEval-S public evaluation
+
+### Scope and design boundaries
+
+MemStack is built as a **local-first, single-agent memory engine** whose active
+working set is kept compact (typically hundreds to a few thousand items, tested
+up to 10,000 items in-process) through consolidation, decay, and cold
+archiving. It is **not** a distributed million-scale ANN vector database;
+optional `numpy` acceleration speeds up exact cosine scoring by ~5–6× while
+preserving zero-dependency pure-Python fallback.
 
 ---
 

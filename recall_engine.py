@@ -2,13 +2,19 @@ import copy
 import math
 import re
 from datetime import datetime
+from operator import mul as _mul
 from typing import List, Tuple
+
+try:
+    import numpy as _np
+except ImportError:
+    _np = None
 
 from config import (
     WEIGHT_SIM, WEIGHT_STRENGTH, WEIGHT_EMOTION,
     ENTITY_BONUS, ENTITY_BONUS_MAX, RECALL_TOP_K, COLD_AWAKE_STRENGTH,
     COLD_RECALL_TOP_K, COLD_RECALL_MIN_SIM,
-    LAYER_THRESHOLDS, LAYER_L1_WEIGHT, LAYER_L2_WEIGHT,
+    LAYER_DECAY_IN_RANKING, LAYER_THRESHOLDS, LAYER_L1_WEIGHT, LAYER_L2_WEIGHT,
     RRF_K,
     # 2026-11-10 第二步：印象候选（Q2=A，rerank 之后补充，不改原公式）
     IMPRESSION_RECALL_MIN, IMPRESSION_DETAIL_MAX, IMPRESSION_MAX_EXTRA,
@@ -31,12 +37,63 @@ def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
     """余弦相似度，返回 0~1；长度不匹配或零向量返回 0"""
     if not vec1 or not vec2 or len(vec1) != len(vec2):
         return 0.0
-    dot = sum(a * b for a, b in zip(vec1, vec2))
-    norm1 = math.sqrt(sum(a ** 2 for a in vec1))
-    norm2 = math.sqrt(sum(b ** 2 for b in vec2))
+    dot = sum(map(_mul, vec1, vec2))
+    norm1 = math.sqrt(sum(map(_mul, vec1, vec1)))
+    norm2 = math.sqrt(sum(map(_mul, vec2, vec2)))
     if norm1 == 0 or norm2 == 0:
         return 0.0
     return max(0.0, dot / (norm1 * norm2))
+
+
+_VEC_MATRIX_CACHE = {}
+_VEC_MATRIX_CACHE_MAX = 8
+
+
+def _batch_cosine_similarities(query_embedding: List[float], candidates: List[MemoryItem]) -> List[float]:
+    """Batch cosine similarities with optional NumPy acceleration + matrix cache."""
+    n = len(candidates)
+    if not query_embedding or n == 0:
+        return [0.0] * n
+    dim = len(query_embedding)
+    if _np is not None and n >= 16:
+        try:
+            q = _np.asarray(query_embedding, dtype=_np.float32)
+            q_norm = float(_np.linalg.norm(q))
+            if q_norm == 0.0 or not math.isfinite(q_norm):
+                return [0.0] * n
+            q_unit = q / q_norm
+            emb_ids = tuple(id(getattr(mem, "embedding", None)) for mem in candidates)
+            cache_key = (dim, emb_ids)
+            cached = _VEC_MATRIX_CACHE.get(cache_key)
+            if cached is None:
+                valid_idx = []
+                valid_vecs = []
+                for idx, mem in enumerate(candidates):
+                    emb = getattr(mem, "embedding", None)
+                    if emb is not None and len(emb) == dim:
+                        valid_idx.append(idx)
+                        valid_vecs.append(emb)
+                if valid_vecs:
+                    mat = _np.asarray(valid_vecs, dtype=_np.float32)
+                    norms = _np.linalg.norm(mat, axis=1, keepdims=True)
+                    safe_norms = _np.where(norms > 0.0, norms, 1.0)
+                    unit_mat = _np.where(norms > 0.0, mat / safe_norms, 0.0)
+                else:
+                    unit_mat = None
+                cached = (valid_idx, unit_mat)
+                if len(_VEC_MATRIX_CACHE) >= _VEC_MATRIX_CACHE_MAX:
+                    _VEC_MATRIX_CACHE.clear()
+                _VEC_MATRIX_CACHE[cache_key] = cached
+            valid_idx, unit_mat = cached
+            out = [0.0] * n
+            if unit_mat is not None:
+                sims = _np.maximum(0.0, unit_mat @ q_unit)
+                for idx, val in zip(valid_idx, sims.tolist()):
+                    out[idx] = float(val) if math.isfinite(val) else 0.0
+            return out
+        except Exception:
+            pass
+    return [cosine_similarity(query_embedding, getattr(mem, "embedding", None) or []) for mem in candidates]
 
 
 def _credibility_of(mem: MemoryItem) -> float:
@@ -188,32 +245,31 @@ def hybrid_rerank(
         note_silent_error('is_meta_query', _e)
         _meta_q = False
 
-    for mem in candidates:
+    try:
+        from schema import is_recallable as _is_recallable
+    except Exception as _e:
+        note_silent_error('is_recallable', _e)
+        _is_recallable = None
+    from config import ACTIVE_WINDOW_BONUS, ACTIVE_WINDOW_MIN_SIM
+
+    sims = _batch_cosine_similarities(query_embedding, candidates)
+    for mem, sim in zip(candidates, sims):
         # on_demand 的记忆不进普通候选池。只在排序里乘小系数不够 ——
         # 语义足够像时仍可能挤进 Top-K，等于没沉睡。
         if mode == "active" and getattr(mem, "recall_mode", "active") == "on_demand":
             continue
-        # meta_only / no 门控（见上面那段说明）
-        #
-        # ★ 用 schema.is_recallable 而不是在这里重写一遍判据：
-        #   那条判据是「这条记忆该不该进答案池」，跟 classify_for_gate 同源。
-        #   内联复制一份的话，以后 schema 那边改了这里就分叉 ——
-        #   而分叉的后果是「同一个字段两处解释不一样」，最难查的那种 bug。
-        #   （⚠️ 不要写成 `import ... as _别名`：link_check 只认 name( 形式，
-        #     别名会让它把这函数判成「无人调用」。）
-        try:
-            from schema import is_recallable
-            if not is_recallable(
-                    getattr(mem, "content", "") or "",
-                    getattr(mem, "source", "") or "",
-                    query_is_meta=_meta_q):
-                continue
-        except Exception as _e:
-            # 判据炸了不能把召回带崩 —— 退回「放行」（跟原来行为一致）
-            note_silent_error('is_recallable', _e)
-        sim = cosine_similarity(query_embedding, mem.embedding)
         if min_similarity is not None and sim < min_similarity:
             continue
+        if _is_recallable is not None:
+            try:
+                if not _is_recallable(
+                        getattr(mem, "content", "") or "",
+                        getattr(mem, "source", "") or "",
+                        query_is_meta=_meta_q):
+                    continue
+            except Exception as _e:
+                # 判据炸了不能把召回带崩 —— 退回「放行」（跟原来行为一致）
+                note_silent_error('is_recallable', _e)
         strength_norm = 0.0
         if WEIGHT_STRENGTH:
             _strength_mem, _ = calculate_current_strength(copy.deepcopy(mem))
@@ -269,10 +325,9 @@ def hybrid_rerank(
         # 2026-11-06 知识降权：外头学来的打 0.55 折，不挤掉经历过的
         if mem.source in KNOWLEDGE_SOURCES:
             final_score *= KNOWLEDGE_DISCOUNT
-        # 2026-11-10 分层降权（方案 A）：久远未召回的乘降权系数，只降权不截断。
-        #   注意：乘在最后（知识降权之后），因为两个降权是独立维度，叠加相乘。
-        final_score *= _layer_weight(mem)
-        from config import ACTIVE_WINDOW_BONUS, ACTIVE_WINDOW_MIN_SIM
+        # 闲置天数只管生命周期（冷存归档），默认不削减相关性排名；显式开启时才生效。
+        if LAYER_DECAY_IN_RANKING:
+            final_score *= _layer_weight(mem)
         if sim >= ACTIVE_WINDOW_MIN_SIM and (mem.effective_from is not None or mem.effective_to is not None):
             final_score += ACTIVE_WINDOW_BONUS
         scored.append((mem, round(final_score, 4)))
@@ -521,7 +576,8 @@ def recall_shortterm(
     now = _time.time()
     query_topics = set(extract_topics(query_text))
     scored = []
-    for mem in candidates:
+    sims = _batch_cosine_similarities(query_embedding, candidates)
+    for mem, sim in zip(candidates, sims):
         # 短期池没有 NON_RECALL_TYPES 过滤，这里明确尊重相同生命周期标记。
         if getattr(mem, 'mem_type', '') in ('superseded', 'unavailable'):
             continue
@@ -529,7 +585,6 @@ def recall_shortterm(
         strength = calculate_shortterm_strength(temp, now)
         if strength < SHORT_TERM_FORGET_THRESHOLD:
             continue
-        sim = cosine_similarity(query_embedding, temp.embedding)
         # 2026-11-06：topic 命中加分——query 里的词撞上这条记忆的话题，即使向量相似度不高也算相关
         mem_topics = set(extract_topics(getattr(temp, "content", "") or ""))
         topic_hit = len(query_topics & mem_topics) > 0
@@ -703,12 +758,12 @@ def recall_cold(
     norm_query = re.sub(r"[\s\W_]+", "", str(query_text or ""))
     query_topics = set(extract_topics(query_text))
     scored = []
+    sims = _batch_cosine_similarities(query_embedding, candidates)
 
-    for mem in candidates:
+    for mem, sim in zip(candidates, sims):
         if getattr(mem, "mem_id", None) in excluded:
             continue
         content = str(getattr(mem, "content", "") or "")
-        sim = cosine_similarity(query_embedding, getattr(mem, "embedding", []) or [])
         norm_content = re.sub(r"[\s\W_]+", "", content)
         exact_hit = bool(norm_query and norm_query in norm_content)
         topic_hit = bool(query_topics & set(extract_topics(content)))
@@ -958,22 +1013,27 @@ def rrf_recall(
     except Exception as _e:
         note_silent_error('is_meta_query', _e)
         _meta_q = False
-    for mem in candidates:
-        mid = mem.mem_id
-        # meta_only / no 门控（跟 hybrid_rerank 同一套，见那边的长注释）
-        try:
-            from schema import is_recallable
-            if not is_recallable(
-                    getattr(mem, "content", "") or "",
-                    getattr(mem, "source", "") or "",
-                    query_is_meta=_meta_q):
-                continue
-        except Exception as _e:
-            note_silent_error('is_recallable', _e)
-        # 路1：语义
-        similarity = cosine_similarity(query_embedding, getattr(mem, "embedding", []) or [])
+    try:
+        from schema import is_recallable as _is_recallable
+    except Exception as _e:
+        note_silent_error('is_recallable', _e)
+        _is_recallable = None
+    sims = _batch_cosine_similarities(query_embedding, candidates)
+    for mem, similarity in zip(candidates, sims):
         if min_similarity is not None and similarity < min_similarity:
             continue
+        mid = mem.mem_id
+        # meta_only / no 门控（跟 hybrid_rerank 同一套，见那边的长注释）
+        if _is_recallable is not None:
+            try:
+                if not _is_recallable(
+                        getattr(mem, "content", "") or "",
+                        getattr(mem, "source", "") or "",
+                        query_is_meta=_meta_q):
+                    continue
+            except Exception as _e:
+                note_silent_error('is_recallable', _e)
+        # 路1：语义
         sem[mid] = similarity
         # 路2：词法（实体 + 标签）
         s = 0.0
@@ -1069,6 +1129,35 @@ def strength_invariance_selftest() -> None:
     rrf_res = rrf_recall(q, [], {"valence": "neutral", "intensity": 0},
                          [high_str_less_rel, low_str_more_rel], top_k=2)
     assert rrf_res[0][0].mem_id == low_str_more_rel.mem_id, rrf_res
+
+    # 5. 年龄不变量：60 天前更相关的记忆不得被 1 天前次相关记忆反超
+    old_more_rel = MemoryItem("60天前的关键约定", strength=50.0,
+                              create_time=now - 60 * 86400, last_recalled_at=now - 60 * 86400)
+    new_less_rel = MemoryItem("昨天的普通记录", strength=95.0,
+                              create_time=now - 86400, last_recalled_at=now - 86400)
+    old_more_rel.embedding = [0.95, 0.3122, 0.0]
+    new_less_rel.embedding = [0.85, 0.5268, 0.0]
+    age_res = hybrid_rerank(q, [], {"valence": "neutral", "intensity": 0},
+                            [new_less_rel, old_more_rel], top_k=2, update_strength=False)
+    assert age_res[0][0].mem_id == old_more_rel.mem_id, age_res
+
+    # 6. 批量余弦与标量余弦严格一致（含零向量、空向量、错维向量）
+    probe_mems = []
+    for idx in range(20):
+        pm = MemoryItem(f"vec-{idx}")
+        if idx == 0:
+            pm.embedding = []
+        elif idx == 1:
+            pm.embedding = [0.0, 0.0, 0.0]
+        elif idx == 2:
+            pm.embedding = [1.0, 0.0]
+        else:
+            pm.embedding = [1.0 - idx * 0.04, idx * 0.04, 0.1]
+        probe_mems.append(pm)
+    batch_sims = _batch_cosine_similarities(q, probe_mems)
+    for pm, bs in zip(probe_mems, batch_sims):
+        sc = cosine_similarity(q, pm.embedding)
+        assert abs(bs - sc) < 1e-5, (bs, sc)
 
     print("recall_engine.strength_invariance selftest OK")
 

@@ -23,7 +23,7 @@ See ``.env.example`` for every supported variable.
 
 import os
 
-VERSION = "3.0.1"
+VERSION = "3.1.0"
 
 # ── Root and data directory ──────────────────────────────────────────────────
 
@@ -157,8 +157,10 @@ COLD_RECALL_TOP_K = 2
 COLD_AWAKE_STRENGTH = 50.0
 
 LAYER_THRESHOLDS = [7.0, 30.0, 180.0]
-LAYER_L1_WEIGHT = 0.8
-LAYER_L2_WEIGHT = 0.5
+# Idle age governs lifecycle demotion (cold archiving), not relevance ranking.
+LAYER_DECAY_IN_RANKING = False
+LAYER_L1_WEIGHT = 1.0
+LAYER_L2_WEIGHT = 1.0
 LAYER_L3_WEIGHT = 1.0
 
 DEDUPLICATION_SIM_THRESHOLD = 0.78

@@ -247,15 +247,17 @@ def main(argv=None):
 
     runs = 3 if args.quick else 7
     agg_sizes = [45, 150] if args.quick else [45, 150, 450]
-    recall_sizes = [250] if args.quick else [250, 1000]
+    recall_sizes = [250, 1000] if args.quick else [250, 1000, 5000, 10000]
     q_cases = 20 if args.quick else 40
 
     report = {
         "python": sys.version.split()[0],
+        "vector_backend": "numpy" if re_mod._np is not None else "python",
         "weights": {
             "WEIGHT_SIM": re_mod.WEIGHT_SIM,
             "WEIGHT_STRENGTH": re_mod.WEIGHT_STRENGTH,
             "WEIGHT_EMOTION": re_mod.WEIGHT_EMOTION,
+            "LAYER_DECAY_IN_RANKING": re_mod.LAYER_DECAY_IN_RANKING,
             "ENTITY_BONUS_MAX": re_mod.ENTITY_BONUS_MAX,
         },
         "episode_aggregate": [bench_episode_aggregate(n, runs=runs) for n in agg_sizes],
@@ -275,7 +277,7 @@ def main(argv=None):
         return 0
 
     print("=== MemStack Reproducible Public Benchmark ===")
-    print(f"Python {report['python']} | weights={report['weights']}")
+    print(f"Python {report['python']} | backend={report['vector_backend']} | weights={report['weights']}")
     print("\n[Episode Aggregation]")
     for row in report["episode_aggregate"]:
         print(f"  n={row['items']:4d} -> {row['episodes']:3d} eps | median={row['median_ms']:6.2f} ms | p95={row['p95_ms']:6.2f} ms")
