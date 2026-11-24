@@ -42,7 +42,7 @@ window.bindModuleUndo = function (button, status, module, action) {
   return sync;
 };
 
-window.createLabRuntime = function (snapshot, payload, demo, readSourceModule, session, mutate) {
+window.createLabRuntime = function (snapshot, payload, demo, readSourceModule, session, mutate, aiReview) {
   const visible = snapshot.items.filter(item => item.k !== "私密");
   const byStrength = [...visible].sort((a, b) => b.s - a.s);
   const { history, cards, added } = session.cards ? session : Object.assign(session, {
@@ -54,6 +54,7 @@ window.createLabRuntime = function (snapshot, payload, demo, readSourceModule, s
   const writableRoutes = {
     "/api/settings": "settings", "/api/handover": "handover", "/api/dsh": "dsh",
     "/api/cards/generate": "generate", "/api/cards/review": "review",
+    "/api/cards/review-batch": "review_batch",
     "/api/cards/maintain": "maintain", "/api/cards/outcome": "outcome"
   };
   const num = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -245,6 +246,13 @@ window.createLabRuntime = function (snapshot, payload, demo, readSourceModule, s
         card.version++;
         history.push([cards.length,counts().active || 0,0]);
         return out({status:card.st});
+      }
+      case "/api/cards/ai-review": {
+        if (!canWrite("review_batch") || typeof aiReview !== "function") {
+          return out({error:"请先连接并启用本机忆栈目录的写入权限。"}, 403);
+        }
+        try { return out(await aiReview(body)); }
+        catch (error) { return out({error:error.message || "AI 预审未完成"}, 502); }
       }
       case "/api/cards/maintain":
         return out({current:counts().active||0,skills:0,skill_capacity:30,stale:0,archived:0});

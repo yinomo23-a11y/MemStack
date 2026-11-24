@@ -94,7 +94,8 @@
     recordsKey = nextRecords;
     matrixKey = nextMatrix;
     window.labRuntime = createLabRuntime(window.geminiSnapshot, payload, profile.kind === "demo", window.readModule, labSession,
-      (action, body) => mutate(payload.connection, action, body));
+      (action, body) => mutate(payload.connection, action, body),
+      async body => unwrap(await api.ai_review(payload.connection, body)));
     $("btnUndo").hidden = !payload.write?.actions?.length;
     const sourceNames = { empty: "未连接", demo: "合成演示", folder: "忆栈目录", sqlite: "SQLite", jsonl: "JSONL", http: "HTTP 接口" };
     $("navTotal").textContent = profile.kind === "empty" ? "未连接" : sourceNames[profile.kind] + " · " + payload.records.length.toLocaleString() + " 条" + (payload.truncated ? "（已截取）" : "");

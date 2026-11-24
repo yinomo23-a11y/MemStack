@@ -1,14 +1,14 @@
 ﻿[Setup]
 AppId={{69935EF4-F9B2-41F5-AC5C-498FB6A8AEF2}
 AppName=忆栈 MemStack
-AppVersion=0.1.22
+AppVersion=0.1.25
 DefaultDirName={localappdata}\Programs\MemStack
 DefaultGroupName=忆栈 MemStack
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=dist
-OutputBaseFilename=MemStack-Setup-0.1.22-x64
+OutputBaseFilename=MemStack-Setup-0.1.25-x64
 ChangesAssociations=yes
 Compression=lzma2
 SolidCompression=yes

@@ -12,6 +12,7 @@ from uuid import uuid4
 import webview
 from filelock import FileLock, Timeout
 
+from ai_review import suggest as ai_review_suggest
 from sources import EXTRAS, SourceError, inspect_source, load_source, remote_module, remote_url
 from writer import revisions, trusted_source, worker
 
@@ -135,7 +136,7 @@ class Desktop:
             with self._lock:
                 if connection != self._connection or not self._profile:
                     raise SourceError("数据源已切换，请重新操作。")
-                if not isinstance(body, dict) or len(json.dumps(body)) > 20000:
+                if not isinstance(body, dict) or len(json.dumps(body)) > 120000:
                     raise SourceError("写入参数无效。")
                 DATA.mkdir(parents=True, exist_ok=True)
                 with NamedTemporaryFile(dir=DATA, suffix=".request", delete=False) as stream:
@@ -147,7 +148,7 @@ class Desktop:
                 if not getattr(sys, "frozen", False):
                     command.append(str(Path(__file__).resolve()))
                 try:
-                    subprocess.run([*command, "--write-worker", str(path)], timeout=50, check=True,
+                    subprocess.run([*command, "--write-worker", str(path)], timeout=90, check=True,
                                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                    creationflags=subprocess.CREATE_NO_WINDOW)
                     reply = json.loads(reply_path.read_bytes())
@@ -160,6 +161,17 @@ class Desktop:
                     path.unlink(missing_ok=True)
                     reply_path.unlink(missing_ok=True)
         return guarded(write)
+
+    def ai_review(self, connection, body):
+        def run():
+            with self._lock:
+                if connection != self._connection or not self._profile:
+                    raise SourceError("数据源已切换，请重新操作。")
+                profile = dict(self._profile)
+            if not isinstance(body, dict) or len(json.dumps(body)) > 20000:
+                raise SourceError("预审参数无效。")
+            return ai_review_suggest(profile, body)
+        return guarded(run)
 
     def reconnect_requested(self):
         if not RECONNECT.exists():

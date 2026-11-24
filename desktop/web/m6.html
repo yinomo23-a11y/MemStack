@@ -148,7 +148,7 @@
   }
   .d-item.open { border-color: rgba(118,178,250,0.34); background: rgba(16,23,36,0.82); }
   .d-row {
-    display: grid; grid-template-columns: 102px 72px 1fr 122px;
+    display: grid; grid-template-columns: 102px 72px 1fr auto;
     align-items: center; gap: 8px;
     padding: 5.5px 9px; cursor: pointer;
   }
@@ -221,6 +221,38 @@
   .s-btn:hover { border-color: rgba(118,178,250,0.55); color: #FFF; }
   .s-btn.ok:hover { border-color: rgba(82,200,168,0.65); color: #64D4B4; }
   .s-btn.no:hover { border-color: rgba(223,107,120,0.65); color: #F08A95; }
+  .s-btn.ok.sel { background: rgba(82,200,168,0.22); border-color: rgba(82,200,168,0.75); color: #84E4C8; font-weight: 600; }
+  .s-btn.no.sel { background: rgba(223,107,120,0.22); border-color: rgba(223,107,120,0.75); color: #F7A0AA; font-weight: 600; }
+  .s-btn.skip.sel { background: rgba(154,182,222,0.16); border-color: rgba(154,182,222,0.55); color: #DCE8F8; }
+  .ai-tag {
+    display: inline-block; font-family: var(--mono); font-size: 9px; line-height: 1.25;
+    padding: 0.5px 5px; border-radius: 4px; margin-right: 5px; vertical-align: 1px;
+  }
+  .ai-tag.ai-ok { color: #64D4B4; background: rgba(82,200,168,0.13); border: 1px solid rgba(82,200,168,0.38); }
+  .ai-tag.ai-no { color: #F08A95; background: rgba(223,107,120,0.13); border: 1px solid rgba(223,107,120,0.40); }
+  .ai-tag.ai-hold { color: #E4B56E; background: rgba(223,173,100,0.13); border: 1px solid rgba(223,173,100,0.38); }
+  .ai-tag.ai-skip { color: #8FA2BC; background: rgba(154,182,222,0.08); border: 1px solid rgba(154,182,222,0.24); }
+  .dd-ai { font-size: 10px; color: #B4C6DE; display: flex; align-items: center; gap: 4px; }
+  .btn.ok { background: rgba(82,200,168,0.18); border-color: rgba(82,200,168,0.52); color: #7EE4C6; font-weight: 600; }
+  .btn.ok:hover { background: rgba(82,200,168,0.30); border-color: rgba(82,200,168,0.75); color: #FFF; }
+  .btn.stop { background: rgba(223,107,120,0.16); border-color: rgba(223,107,120,0.55); color: #F7A0AA; }
+  .btn.stop:hover { background: rgba(223,107,120,0.28); color: #FFF; }
+  dialog.ms-dialog {
+    margin: auto; padding: 0; border: 1px solid rgba(118,178,250,0.38); border-radius: 12px;
+    background: linear-gradient(180deg, #101725 0%, #0A0F1A 100%); color: var(--text);
+    width: min(380px, 90vw); box-shadow: 0 20px 56px rgba(0,0,0,0.78);
+  }
+  dialog.ms-dialog::backdrop { background: rgba(3,6,12,0.72); backdrop-filter: blur(4px); }
+  .ms-dlg-head {
+    padding: 12px 16px 8px; font-size: 13px; font-weight: 600; color: #F4F8FF;
+    border-bottom: 1px solid rgba(154,182,222,0.10);
+  }
+  .ms-dlg-body { padding: 12px 16px; font-size: 11.5px; line-height: 1.6; color: #B8CAE0; }
+  .ms-dlg-body b { color: #F1F6FD; font-family: var(--mono); }
+  .ms-dlg-foot {
+    padding: 10px 16px 13px; display: flex; justify-content: flex-end; gap: 8px;
+    border-top: 1px solid rgba(154,182,222,0.08);
+  }
 
   .batch-bar {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -369,6 +401,9 @@
           </div>
           <div class="distill-actions" style="display:flex;align-items:center;gap:6px;white-space:nowrap">
             <button class="btn" id="btnMaintain" title="核对全部失效卡的原始对话证据，能恢复的自动恢复">一键校准失效卡</button>
+            <button class="btn pri" id="btnAiReview" hidden title="调用模型对当前待审卡出预审标记，仅生成草案不写盘，可逐条改判后确认落盘">AI预审</button>
+            <button class="btn ok" id="btnCommitDraft" hidden>落盘 (0)</button>
+            <button class="btn" id="btnClearDraft" hidden>清空</button>
             <button class="btn pri" id="btnGenDry">试跑蒸馏 generate(1批)</button>
             <button class="btn pri" id="btnGenWrite" hidden>生成并保存</button>
             <button class="btn" id="btnModuleUndo" hidden disabled>回滚本页</button>
@@ -489,6 +524,15 @@
   </main>
 </div>
 
+<dialog id="commitDialog" class="ms-dialog">
+  <div class="ms-dlg-head">确认批量落盘</div>
+  <div class="ms-dlg-body" id="commitDialogBody"></div>
+  <div class="ms-dlg-foot">
+    <button class="btn" id="commitDlgCancel" type="button">取消</button>
+    <button class="btn ok" id="commitDlgOk" type="button">确认写入</button>
+  </div>
+</dialog>
+
 <script src="gemini-data.js"></script>
 <script>
 (function(){
@@ -507,7 +551,70 @@
   const expandedIds = new Set();
   const pendingReviews = new Map();
   const pendingSkills = new Set();
+  const aiDrafts = new Map(); // id -> { version, aiVerdict, choice: 'approve'|'reject'|'hold'|'skip', reason }
+  let aiBusy = false;
+  let aiReviewRunning = false;
+  let aiStopRequested = false;
   const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  function openCommitDialog(sum) {
+    const dlg = document.getElementById('commitDialog');
+    const body = document.getElementById('commitDialogBody');
+    const okBtn = document.getElementById('commitDlgOk');
+    const cancelBtn = document.getElementById('commitDlgCancel');
+    body.innerHTML = `确认将 <b>${sum.ready}</b> 张卡片的审核结果写入本地卡片库？<br>通过 <b style="color:#64D4B4">${sum.app}</b> 张 · 拒绝 <b style="color:#F08A95">${sum.rej}</b> 张（存疑与跳过项不写入）。<br><span style="color:#7B8EA8;font-size:10.5px">写入后可随时点「回滚本页」一键撤销整批。</span>`;
+    return new Promise(resolve => {
+      const done = val => {
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        dlg.removeEventListener('cancel', onCancel);
+        if (dlg.open) dlg.close();
+        resolve(val);
+      };
+      const onOk = () => done(true);
+      const onCancel = e => { if (e && e.type === 'cancel') e.preventDefault(); done(false); };
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      dlg.addEventListener('cancel', onCancel);
+      dlg.showModal();
+    });
+  }
+
+  function draftSummary() {
+    let app = 0, rej = 0, hold = 0, total = 0;
+    const byId = new Map(CARDS.map(c => [c.id, c]));
+    for (const [id, d] of aiDrafts.entries()) {
+      const card = byId.get(id);
+      if (!card || card.readOnly || card.version !== d.version || (card.st !== 'provisional' && card.st !== 'stale')) {
+        aiDrafts.delete(id);
+        continue;
+      }
+      total += 1;
+      if (d.choice === 'approve') app += 1;
+      else if (d.choice === 'reject') rej += 1;
+      else if (d.choice === 'hold') hold += 1;
+    }
+    return { app, rej, hold, total, ready: app + rej };
+  }
+
+  function syncAiControls() {
+    const canBatch = window.parent.labRuntime?.canWrite?.('review_batch') === true;
+    document.getElementById('btnGenWrite').hidden = window.parent.labRuntime?.canWrite?.('generate') !== true;
+    const btnAi = document.getElementById('btnAiReview');
+    const btnCommit = document.getElementById('btnCommitDraft');
+    const btnClear = document.getElementById('btnClearDraft');
+    const sum = draftSummary();
+    btnAi.hidden = !canBatch;
+    btnAi.disabled = aiBusy && !aiReviewRunning;
+    btnAi.classList.toggle('stop', aiReviewRunning);
+    btnAi.classList.toggle('pri', !aiReviewRunning);
+    if (!aiReviewRunning) btnAi.textContent = 'AI预审';
+    btnCommit.hidden = !canBatch || sum.ready === 0;
+    btnCommit.disabled = aiBusy || sum.ready === 0;
+    btnCommit.textContent = `落盘 (${sum.app}✓ ${sum.rej}✕)`;
+    btnClear.hidden = !canBatch || sum.total === 0;
+    btnClear.disabled = aiBusy;
+  }
 
   function renderCards() {
     const q = document.getElementById('cardQueue');
@@ -518,14 +625,30 @@
       const confTxt = c.confLabel ? `conf ${esc(c.confLabel)}` : `conf ${Number(c.conf || 0).toFixed(2)}`;
       const stCls = c.st === 'active' ? 'ok' : c.st === 'provisional' ? 'blue' : c.st === 'stale' ? 'warn' : c.st === 'rejected' ? 'err' : 'dim';
       const pending = pendingReviews.get(c.id);
+      const draft = !c.readOnly && (c.st === 'provisional' || c.st === 'stale') ? aiDrafts.get(c.id) : null;
       const acts = pending
         ? `<button class="s-btn" disabled aria-busy="true">${esc(pending)}</button>`
+        : draft
+          ? `<button class="s-btn ok${draft.choice === 'approve' ? ' sel' : ''}" data-draft="approve" data-id="${esc(c.id)}" title="确认或改为通过">✓</button><button class="s-btn no${draft.choice === 'reject' ? ' sel' : ''}" data-draft="reject" data-id="${esc(c.id)}" title="确认或改为拒绝">✕</button><button class="s-btn skip${draft.choice === 'skip' ? ' sel' : ''}" data-draft="skip" data-id="${esc(c.id)}" title="本次跳过不落盘">跳</button>`
         : !c.readOnly && c.st === 'provisional'
           ? `<button class="s-btn ok" data-act="app" data-id="${esc(c.id)}">通过</button><button class="s-btn no" data-act="rej" data-id="${esc(c.id)}">拒绝</button>`
           : !c.readOnly && c.st === 'stale'
             ? `<button class="s-btn ok" data-act="recheck" data-id="${esc(c.id)}" title="重新核对原始证据并尝试恢复生效">重审启用</button><button class="s-btn no" data-act="rej" data-id="${esc(c.id)}" title="确认不再使用并移入已拒">驳回</button>`
             : `<span class="mono" style="font-size:9px;color:#6E829E">${esc(c.rev)} · str ${Number(c.str || 0).toFixed(0)}</span>`;
+      let aiBadge = '', aiDetail = '';
+      if (draft) {
+        const edited = draft.choice !== draft.aiVerdict;
+        const cls = draft.choice === 'approve' ? 'ai-ok' : draft.choice === 'reject' ? 'ai-no' : draft.choice === 'skip' ? 'ai-skip' : 'ai-hold';
+        const tagText = draft.choice === 'approve'
+          ? (edited ? '改✓' : 'AI✓')
+          : draft.choice === 'reject'
+            ? (edited ? '改✕' : 'AI✕')
+            : draft.choice === 'skip' ? '跳过' : 'AI?';
+        aiBadge = `<span class="ai-tag ${cls}" title="${esc(draft.reason)}">${tagText}</span>`;
+        aiDetail = `<div class="dd-ai"><span class="ai-tag ${cls}">${tagText}</span><span>${esc(draft.reason)}</span></div>`;
+      }
       const detailHtml = isOpen ? `<div class="d-detail">
+        ${aiDetail}
         <div class="dd-full">${esc(c.full)}</div>
         <div class="dd-quote">${esc(c.quote)}</div>
         <div class="dd-grid">
@@ -542,7 +665,7 @@
         <div class="d-row" data-toggle="${esc(c.id)}">
           <span class="d-kind"><span class="d-chev">${isOpen ? '▾' : '▸'}</span>${esc(dispId)} · ${esc(c.kind)}</span>
           <span class="badge ${stCls}" style="text-align:center">${esc(c.st)}</span>
-          <div class="d-txt">${esc(c.txt)}<span class="d-meta">${confTxt}</span></div>
+          <div class="d-txt">${aiBadge}${esc(c.txt)}<span class="d-meta">${confTxt}</span></div>
           <div class="d-acts">${acts}</div>
         </div>
         ${detailHtml}
@@ -552,6 +675,15 @@
     q.querySelectorAll('[data-toggle]').forEach(row => row.addEventListener('click', () => {
       const id = row.dataset.toggle;
       if (expandedIds.has(id)) expandedIds.delete(id); else expandedIds.add(id);
+      renderCards();
+    }));
+
+    q.querySelectorAll('button[data-draft]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const draft = aiDrafts.get(btn.dataset.id);
+      if (!draft || aiBusy) return;
+      draft.choice = btn.dataset.draft;
+      syncAiControls();
       renderCards();
     }));
 
@@ -698,6 +830,144 @@
   document.getElementById('btnGenDry').addEventListener('click', function() { generateCards.call(this, true); });
   document.getElementById('btnGenWrite').addEventListener('click', function() { generateCards.call(this, false); });
   document.getElementById('btnGenWrite').hidden = !LAB.canWrite('generate');
+
+  document.getElementById('btnAiReview').addEventListener('click', async function() {
+    if (aiReviewRunning) {
+      aiStopRequested = true;
+      this.textContent = '停止中…';
+      this.disabled = true;
+      return;
+    }
+    if (aiBusy) return;
+    const targetSt = curFilter === 'stale' ? 'stale' : 'provisional';
+    const initialQueue = CARDS.filter(c => !c.readOnly && c.version && c.st === targetSt && !aiDrafts.has(c.id));
+    const foot = document.getElementById('pipeAFoot');
+    if (!initialQueue.length) {
+      foot.innerHTML = `<span style="color:#E4B56E">当前没有尚未预审的可写 ${targetSt === 'stale' ? '源失效' : '待审'} 卡片</span>`;
+      return;
+    }
+    if (curFilter === 'all' && targetSt === 'provisional') {
+      const provPill = document.querySelector('#filterPills .pill[data-st="provisional"]');
+      if (provPill) {
+        document.querySelectorAll('#filterPills .pill').forEach(x => x.classList.remove('active'));
+        provPill.classList.add('active');
+        curFilter = 'provisional';
+      }
+    }
+    const totalTarget = initialQueue.length;
+    aiBusy = true;
+    aiReviewRunning = true;
+    aiStopRequested = false;
+    syncAiControls();
+    let done = 0, nApp = 0, nRej = 0, nHold = 0, skippedProt = 0, lastModel = 'LLM', failedMsg = '';
+    const seenIds = new Set();
+    try {
+      while (!aiStopRequested) {
+        const remaining = CARDS.filter(
+          c => !c.readOnly && c.version && c.st === targetSt && !aiDrafts.has(c.id) && !seenIds.has(c.id)
+        );
+        if (!remaining.length) break;
+        const chunk = remaining.slice(0, 12);
+        chunk.forEach(c => seenIds.add(c.id));
+        this.textContent = `停止 (${done}/${totalTarget})`;
+        foot.textContent = `AI 自动分批预审中：已完成 ${done}/${totalTarget}，正在审下 ${chunk.length} 张（绝不写盘）…`;
+        const r = await fetch('/api/cards/ai-review', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cards: chunk.map(c => ({ id: c.id, version: c.version })) })
+        });
+        const res = await r.json();
+        if (!r.ok) {
+          failedMsg = res.error || ('HTTP ' + r.status);
+          break;
+        }
+        lastModel = res.model || lastModel;
+        skippedProt += Number(res.skipped_protected || 0);
+        for (const item of (res.items || [])) {
+          aiDrafts.set(item.id, {
+            version: item.version, aiVerdict: item.verdict, choice: item.verdict, reason: item.reason
+          });
+          if (item.verdict === 'approve') nApp += 1;
+          else if (item.verdict === 'reject') nRej += 1;
+          else nHold += 1;
+        }
+        done += chunk.length;
+        syncAiControls();
+        renderCards();
+      }
+      const skipNote = skippedProt ? ` · 跳过受保护 ${skippedProt} 张` : '';
+      if (failedMsg) {
+        foot.innerHTML = `<span style="color:#F08A95">⚠ 第 ${done + 1} 张起预审中断：${esc(failedMsg)}（已保留前 ${done} 张标记）</span>`;
+      } else if (aiStopRequested) {
+        foot.innerHTML = `<span style="color:#E4B56E">已手动停止（已完成 ${done}/${totalTarget} · 通过 ${nApp} · 拒绝 ${nRej} · 存疑 ${nHold}）· 可直接改判或落盘</span><span class="mono" style="color:#E4B56E">PAUSED</span>`;
+      } else {
+        foot.innerHTML = `<span style="color:#64D4B4">✓ AI 全部预审完成（${esc(lastModel)} · 共 ${done} 张：通过 ${nApp} · 拒绝 ${nRej} · 存疑 ${nHold}${skipNote}）· 改判后点「落盘」</span><span class="mono" style="color:#94C4FF">DRAFT</span>`;
+      }
+    } catch (error) {
+      foot.textContent = `AI 预审中断（已保留 ${done} 张）：` + error.message;
+    } finally {
+      aiBusy = false;
+      aiReviewRunning = false;
+      aiStopRequested = false;
+      syncAiControls();
+      renderCards();
+    }
+  });
+
+  document.getElementById('btnCommitDraft').addEventListener('click', async function() {
+    if (aiBusy) return;
+    const sum = draftSummary();
+    if (!sum.ready) return;
+    if (!await openCommitDialog(sum)) return;
+    const byId = new Map(CARDS.map(c => [c.id, c]));
+    const items = [];
+    for (const [id, d] of aiDrafts.entries()) {
+      if (d.choice !== 'approve' && d.choice !== 'reject') continue;
+      const card = byId.get(id);
+      if (!card || card.version !== d.version) continue;
+      items.push({ id, version: d.version, approved: d.choice === 'approve' });
+    }
+    if (!items.length) return;
+    aiBusy = true;
+    syncAiControls();
+    const foot = document.getElementById('pipeAFoot');
+    const finish = parent.showButtonProgress(this, `落盘中 (${items.length}张)…`);
+    foot.textContent = `正在原子写入 ${items.length} 张审核结果…`;
+    try {
+      const r = await fetch('/api/cards/review-batch', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      const res = await r.json();
+      if (!r.ok) {
+        foot.innerHTML = `<span style="color:#F08A95">⚠ 批量落盘失败：${esc(res.error || ('HTTP ' + r.status))}</span>`;
+        if (r.status === 409) await hydrateM6Cards();
+        return;
+      }
+      for (const it of items) aiDrafts.delete(it.id);
+      await hydrateM6Cards();
+      syncUndo();
+      const extra = [];
+      if (res.stale) extra.push(`源失效 ${res.stale}`);
+      if (res.blocked) extra.push(`校验未过 ${res.blocked}`);
+      const extraTxt = extra.length ? ' · ' + extra.join(' · ') : '';
+      foot.innerHTML = `<span style="color:#64D4B4">✓ 已原子落盘 ${res.applied || items.length} 张（通过 ${res.active || 0} · 拒绝 ${res.rejected || 0}${extraTxt}）· 支持「回滚本页」</span><span class="mono" style="color:#64D4B4">BATCH SAVED</span>`;
+    } catch (error) {
+      foot.textContent = '批量落盘未完成：' + error.message;
+    } finally {
+      aiBusy = false;
+      finish();
+      syncAiControls();
+      renderCards();
+    }
+  });
+
+  document.getElementById('btnClearDraft').addEventListener('click', () => {
+    if (aiBusy) return;
+    aiDrafts.clear();
+    syncAiControls();
+    renderCards();
+    document.getElementById('pipeAFoot').innerHTML = '<span style="color:#94C4FF">已清空 AI 预审草案（未写入任何改动）</span>';
+  });
 
   // ===== 2. PIPELINE B: VAULT GUARDRAIL + SKILL EVOLUTION =====
   const bNoteEl = document.getElementById('bNote');
@@ -1044,6 +1314,7 @@
     }
     if (res.vault) renderVaultInfo(res.vault);
     syncCountsUI();
+    syncAiControls();
     renderCards();
   }
 
@@ -1078,6 +1349,7 @@
     document.getElementById('moduleUndoStatus'), 'm6', 'generate');
   window.refreshData = () => {
     syncUndo();
+    syncAiControls();
     hydrateM6Cards().catch(() => {});
     hydrateM6Audit().catch(() => {});
   };

@@ -23,13 +23,13 @@ DSH = ("dsh-session-vacuum/config.json", "cordis.patch.yml")
 ACTIONS = {
     "settings": ("记忆参数", (SETTINGS,)), "handover": ("交接单", (HANDOVER,)),
     "dsh": ("DSH 配置", DSH), "generate": ("生成蒸馏候选", (CARDS,)),
-    "review": ("审核蒸馏卡片", (CARDS,)), "maintain": ("校准蒸馏卡片", (CARDS,)),
-    "outcome": ("记录技能结果", (CARDS,)),
+    "review": ("审核蒸馏卡片", (CARDS,)), "review_batch": ("批量审核蒸馏卡片", (CARDS,)),
+    "maintain": ("校准蒸馏卡片", (CARDS,)), "outcome": ("记录技能结果", (CARDS,)),
 }
 UNDO_MODULES = {
     "m4": ("settings",),
     "m5": ("handover", "dsh"),
-    "m6": ("generate", "review", "maintain", "outcome"),
+    "m6": ("generate", "review", "review_batch", "maintain", "outcome"),
 }
 REVIEW_FIELDS = ("id", "status", "content", "source_revisions", "updated_at", "review", "out_kind",
                  "out_turns", "quotes", "trigger", "steps", "skill_status", "evidence_sha")
@@ -279,36 +279,93 @@ def card_bytes(action, body, before):
     if action == "generate":
         result = generate_cards(model, body, data)
         return (json_bytes(data) if result["planned"] and body.get("dry_run") is not True else before), result
-    raw = next((card for card in data.get("cards", [])
-                if "source-" + sha256(str(card.get("id")).encode()).hexdigest() == body.get("id")), None)
-    if action in ("review", "outcome"):
-        if raw is None or raw.get("scope") == "intimate" or raw.get("is_intimate"):
-            raise SourceError("找不到可写的卡片。")
-        if card_version(raw) != body.get("version"):
-            raise SourceError("卡片已变化，请刷新后重试。")
+    raw = None
+    batch_targets = []
+    if action == "review_batch":
+        items = body.get("items")
+        if not isinstance(items, list) or not items or len(items) > 300:
+            raise SourceError("批量审核项无效（每次最多 300 张）。")
+        by_sid = {"source-" + sha256(str(card.get("id")).encode()).hexdigest(): card
+                  for card in data.get("cards", []) if isinstance(card, dict)}
+        seen = set()
+        for entry in items:
+            if (not isinstance(entry, dict) or not isinstance(entry.get("id"), str)
+                    or type(entry.get("approved")) is not bool or entry["id"] in seen):
+                raise SourceError("批量审核参数无效。")
+            seen.add(entry["id"])
+            card = by_sid.get(entry["id"])
+            if card is None or card.get("scope") == "intimate" or card.get("is_intimate"):
+                raise SourceError("存在不可写的受保护卡片，请刷新后重试。")
+            if card_version(card) != entry.get("version"):
+                raise SourceError("部分卡片已变化，请刷新后重试。")
+            batch_targets.append((entry["id"], card["id"], entry["approved"]))
+    else:
+        raw = next((card for card in data.get("cards", [])
+                    if "source-" + sha256(str(card.get("id")).encode()).hexdigest() == body.get("id")), None)
+        if action in ("review", "outcome"):
+            if raw is None or raw.get("scope") == "intimate" or raw.get("is_intimate"):
+                raise SourceError("找不到可写的卡片。")
+            if card_version(raw) != body.get("version"):
+                raise SourceError("卡片已变化，请刷新后重试。")
     if before is None:
         return before, {"current": 0, "skills": 0, "skill_capacity": model.SKILL_MAX, "stale": 0, "archived": 0}
     with TemporaryDirectory(prefix="memstack-cards-") as folder:
         path = Path(folder) / "main.json"
         path.write_bytes(before)
+        orig_path = model._path
         graph = model.source_graph
         state_lock = common.locking.state_lock
         model._path = lambda scope: str(path)
         model.source_graph = lambda **kw: graph(read_only=True)
         common.locking.state_lock = lambda name: nullcontext() if name == "distillation-main" else state_lock(name)
-        if action == "maintain":
-            result = model.maintain("main")
-        elif action == "review":
-            if type(body.get("approved")) is not bool:
-                raise SourceError("缺少审核结果。")
-            status = model.review("main", raw["id"], reviewer="memstack-desktop", approved=body["approved"])
-            result = {"status": status}
-        else:
-            if type(body.get("ok")) is not bool:
-                raise SourceError("缺少技能执行结果。")
-            value = model.record_skill_outcome("main", raw["id"], ok=body["ok"])
-            result = {"status": value["skill_status"], "fails": value["fail_count"]}
-        return path.read_bytes(), result
+        try:
+            if action == "maintain":
+                result = model.maintain("main")
+            elif action == "review_batch":
+                import atomic_io
+
+                # Cache source_graph & keep main.json in memory across the batch:
+                # avoids N× full-pool reloads and N× multi-MB JSON fsyncs.
+                cached_graph = graph(read_only=True)
+                mem_data = json.loads(before.decode("utf-8"))
+                orig_load = model._load
+                orig_write = atomic_io.atomic_write_json
+                model.source_graph = lambda **kw: cached_graph
+                model._load = lambda _p: mem_data
+                atomic_io.atomic_write_json = lambda _p, _d: None
+                try:
+                    results = []
+                    counts = {"active": 0, "rejected": 0, "stale": 0, "blocked": 0}
+                    for sid, cid, approved in batch_targets:
+                        try:
+                            status = model.review("main", cid, reviewer="memstack-desktop", approved=approved)
+                        except ValueError as exc:
+                            raise SourceError(f"批量审核中止：{exc}") from None
+                        results.append({"id": sid, "status": status})
+                        if status in counts:
+                            counts[status] += 1
+                        else:
+                            counts["blocked"] += 1
+                    result = {"applied": len(results), **counts, "results": results}
+                    return json_bytes(mem_data), result
+                finally:
+                    model._load = orig_load
+                    atomic_io.atomic_write_json = orig_write
+            elif action == "review":
+                if type(body.get("approved")) is not bool:
+                    raise SourceError("缺少审核结果。")
+                status = model.review("main", raw["id"], reviewer="memstack-desktop", approved=body["approved"])
+                result = {"status": status}
+            else:
+                if type(body.get("ok")) is not bool:
+                    raise SourceError("缺少技能执行结果。")
+                value = model.record_skill_outcome("main", raw["id"], ok=body["ok"])
+                result = {"status": value["skill_status"], "fails": value["fail_count"]}
+            return path.read_bytes(), result
+        finally:
+            model._path = orig_path
+            model.source_graph = graph
+            common.locking.state_lock = state_lock
 
 
 def source_key(profile, data):
@@ -337,7 +394,7 @@ def revisions(profile, app_data=None):
     if info is None:
         return {}
     _, data = info
-    actions = ["settings", "handover", "generate", "review", "maintain", "outcome"]
+    actions = ["settings", "handover", "generate", "review", "review_batch", "maintain", "outcome"]
     if profile.get("dsh_path") and all((Path(profile["dsh_path"]) / f).is_file() for f in DSH):
         actions.append("dsh")
     names = (SETTINGS, HANDOVER, *(DSH if "dsh" in actions else ()))
@@ -376,7 +433,7 @@ def lock_for(stack, action, locking):
         if not isinstance(lock, FileLock):
             raise SourceError("记忆模型没有可用的写入锁。")
         stack.enter_context(lock.acquire(timeout=8))
-    name = "console-dsh" if action == "dsh" else "distillation-main" if action in ("generate", "review", "maintain", "outcome") else None
+    name = "console-dsh" if action == "dsh" else "distillation-main" if action in ("generate", "review", "review_batch", "maintain", "outcome") else None
     if name:
         lock = locking.state_lock(name)
         if not isinstance(lock, FileLock):
