@@ -109,6 +109,11 @@ def _fmt(hit, show_text):
 
 
 def main(argv):
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     strict = "--strict" in argv
     show_text = "--show-text" in argv
     as_json = "--json" in argv
