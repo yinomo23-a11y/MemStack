@@ -52,17 +52,19 @@ MemoryManager.add_shortterm()        ← everything enters here
 shortterm.json                       ← TTL 3 days
 ```
 
-Nothing writes directly into `active.json`. Items reach the working set only
-through consolidation. This is the single most important structural rule: it
-means the working set is always the output of a considered process, never an
-accident.
+Automatic capture does not write directly into `active.json`; normal writes go
+through `working_mem.json` / `shortterm.json` and reach the working set only
+through consolidation. The two explicit exceptions are user-pinned items
+(`is_manual=True` / `isManual: true`) and time-bounded items specifying
+`effective_from` or `effective_to` (e.g., weekly schedules), which persist
+directly to `active.json` via `services/memory_tools.mcp_add()`.
 
 ### Consolidation
 
 `daily_consolidation.py`, run daily:
 
 1. **Load** shortterm + active.
-2. **Aggregate** shortterm items into episodes (90-minute segments by default).
+2. **Aggregate** shortterm items into episodes (600-second / 10-minute gap cutoff by default).
 3. **Promote** items above threshold into `active.json`.
 4. **Refresh** strength on everything that survived.
 5. **Demote** active items below the floor to `cold.json`.
@@ -80,7 +82,7 @@ query
 services/recall_policy.eligible()    ← may this be surfaced at all?
   │
   ▼
-recall_engine score                  ← lexical + vector + recency + strength
+recall_engine score                  ← vector + lexical/entity + emotion + recency (no strength weight)
   │
   ▼
 services/recall_service.recall_core()← assemble, render, budget
@@ -122,9 +124,11 @@ makes the "forget well" claim safe to make.
 
 ## Strength and decay
 
-Every item carries `strength` and a timestamp. Decay is applied lazily on read,
-using the elapsed time since the last computation, so there is no background
-process and no scheduler requirement.
+Every item carries `strength` and a timestamp. Strength governs **lifecycle
+only** (decay, short-term forgetting cutoff, and active-to-cold demotion) — it
+does not weight relevance ranking (`WEIGHT_STRENGTH = 0.0`). Decay is applied
+lazily on read, using the elapsed time since the last computation, so there is
+no background process and no scheduler requirement.
 
 The curve has three properties that matter:
 
@@ -147,10 +151,11 @@ copy document that the fallback **must equal** the config value.
 A raw turn log is not memory. Episodes group turns into units that can be
 referred to: "that time we planned the trip" is one episode, not forty rows.
 
-Grouping is by time (90-minute gaps by default) plus topic continuity. Episodes
-carry their own strength and are recalled alongside individual items, which is
-why `recall_service` resolves episodes as a separate final step rather than
-mixing them into the item ranking.
+Grouping is by time (`EPISODE_GAP_CUT_SECONDS = 600`, i.e. 10-minute gaps by
+default) plus topic continuity. Episodes carry their own strength and are
+recalled alongside individual items, which is why `recall_service` resolves
+episodes as a separate final step rather than mixing them into the item
+ranking.
 
 Orphan detection matters more than it looks: an episode whose referenced source
 ids no longer exist is invisible to recall but occupies space and can resurrect

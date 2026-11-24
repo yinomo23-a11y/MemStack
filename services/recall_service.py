@@ -175,11 +175,12 @@ def recall_core(mgr, query, emotion=None, entities=None, *,
 
     # ── 步骤 C：语义相关度复筛（失败保留原结果） ──
     try:
+        from config import RECALL_SEMANTIC_MIN_SIM
         from recall_engine import cosine_similarity
         if valid_vector(out.get('query_embedding')):
             for key in ('results','_shortterm_results','_cold_results','_permanent_results','_distilled_results'):
                 out[key] = [hit for hit in out.get(key,[]) if cosine_similarity(
-                    out['query_embedding'],getattr(hit[0] if isinstance(hit,(tuple,list)) else hit,'embedding',[])) >= .45]
+                    out['query_embedding'],getattr(hit[0] if isinstance(hit,(tuple,list)) else hit,'embedding',[])) >= RECALL_SEMANTIC_MIN_SIM]
     except Exception as exc:
         out['errors'].append('相关性复筛失败（保留原始结果）: '+type(exc).__name__)
 
@@ -232,10 +233,11 @@ def recall_core(mgr, query, emotion=None, entities=None, *,
                 # different supporting item already occupied the main Top-K.
                 delivered={hit[0].mem_id for key in ('results','_shortterm_results','_cold_results','_distilled_results')
                            for hit in out.get(key,[])}
+                from config import RECALL_SEMANTIC_MIN_SIM
                 for memory in available[:3]:
                     if memory.mem_id in delivered:continue
                     similarity=cosine_similarity(out['query_embedding'],getattr(memory,'embedding',[]))
-                    if similarity<.45:continue
+                    if similarity<RECALL_SEMANTIC_MIN_SIM:continue
                     route={'active':'results','shortterm':'_shortterm_results','cold':'_cold_results'}.get(pool_lookup.get(memory.mem_id))
                     if route:
                         out.setdefault(route,[]).append((memory,similarity));delivered.add(memory.mem_id)
@@ -248,6 +250,7 @@ def recall_core(mgr, query, emotion=None, entities=None, *,
 
     # ── 步骤 E：最终情景档 resolve（失败保留原 results） ──
     try:
+        from config import RECALL_SEMANTIC_MIN_SIM
         from services.recall_policy import row_of
         from recall_engine import cosine_similarity, is_meta_query
         from services.evidence_semantics import supports
@@ -255,7 +258,7 @@ def recall_core(mgr, query, emotion=None, entities=None, *,
         for hit in episode_hits:
             memory=hit[0] if isinstance(hit,(tuple,list)) else hit
             if not eligible(memory,context,sources=sources):continue
-            if cosine_similarity(out['query_embedding'],getattr(memory,'embedding',[]))<.45:continue
+            if cosine_similarity(out['query_embedding'],getattr(memory,'embedding',[]))<RECALL_SEMANTIC_MIN_SIM:continue
             if slot and not is_meta_query(query) and not supports(row_of(memory),query,subject=context.subject):continue
             qualified_episodes.append(hit if isinstance(hit,(tuple,list)) else (memory,0.))
         resolved=resolve_episodes((out.get('results') or [])+qualified_episodes,query)

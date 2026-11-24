@@ -153,6 +153,7 @@ Connect clients that may read and modify the configured store, for example:
 - [docs/模型原理说明.md](docs/模型原理说明.md) — Chinese overview, architecture, CLI/MCP quickstart, distillation & skill cards
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module boundaries and data flow
 - [docs/OPERATIONS.md](docs/OPERATIONS.md) — deployment, daily/weekly checks, backup, and failure signals
+- [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — reproducible latency benchmarks and recall-ranking ablation results
 
 ---
 

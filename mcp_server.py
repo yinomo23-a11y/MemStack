@@ -122,7 +122,7 @@ def handle_request(req: dict):
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "dsh-human-like-memory", "version": getattr(config, "VERSION", "2.1.2")},
+                "serverInfo": {"name": "memstack", "version": getattr(config, "VERSION", "2.1.2")},
             },
         }
 

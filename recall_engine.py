@@ -126,7 +126,7 @@ def hybrid_rerank(
     query_text: str = "",
     min_similarity: float = None,
 ) -> List[Tuple[MemoryItem, float]]:
-    """混合召回重排：语义相似度 + 记忆强度 + 情绪匹配，全部归一化到 0~1。
+    """混合召回重排：语义相似度 + 情绪匹配（默认权重 0.95 / 0.05；强度只管生命周期，不参与排序）。
 
     - 打分阶段使用深拷贝，避免计算污染候选对象（防止虚假激活）
     - 仅对最终入选 Top-K 的记忆更新强度与最后激活时间
@@ -214,23 +214,22 @@ def hybrid_rerank(
         sim = cosine_similarity(query_embedding, mem.embedding)
         if min_similarity is not None and sim < min_similarity:
             continue
-        temp_mem, _ = calculate_current_strength(copy.deepcopy(mem))
-        strength_norm = temp_mem.strength / 100.0
-        emotion_norm = _emotion_match_score(query_valence, query_intensity, temp_mem) / 100.0
+        strength_norm = 0.0
+        if WEIGHT_STRENGTH:
+            _strength_mem, _ = calculate_current_strength(copy.deepcopy(mem))
+            strength_norm = _strength_mem.strength / 100.0
+        emotion_norm = _emotion_match_score(query_valence, query_intensity, mem) / 100.0
 
         base_score = sim * WEIGHT_SIM + strength_norm * WEIGHT_STRENGTH + emotion_norm * WEIGHT_EMOTION
         # 主动召回权重独立于强度；永久记忆也受它控制，避免反复冒出。
         try:
-            base_score *= max(0.0, min(1.0, float(getattr(temp_mem, "recall_weight", 1.0) or 0.0)))
+            base_score *= max(0.0, min(1.0, float(getattr(mem, "recall_weight", 1.0) or 0.0)))
         except (TypeError, ValueError):
             pass
 
         # 2026-11-08 信任度（T06）：低可信的降权。
-        #   credibility 不随时间衰减（见 decay_logic），所以「三个月没提的事实」
-        #   仍然按 1.0 参与打分，只是 strength 那一项掉下来 —— 这才是对的。
-        #   乘在**相关度基分**上、不乘实体加分：实体命中是「跟这次话题有关」，
-        #   跟这条记忆可不可信是两件事。
-        base_score *= _credibility_of(temp_mem)
+        #   credibility 不随时间衰减（见 decay_logic），乘在相关度基分上、不乘实体加分。
+        base_score *= _credibility_of(mem)
 
         # ★ 2026-11-13：按内容类别加权（kind）。
         #
@@ -246,33 +245,20 @@ def hybrid_rerank(
         #       但也不能全排除（问「昨晚聊什么」时还要它）。
         #     测试 ×0 —— 这个必须硬排除，测试句永远不该当答案。
         #     其余 ×1.0 —— 事实/约定/事件/情感 全部等权，不做区别。
-        _kind = str(getattr(temp_mem, "kind", "") or "")
+        _kind = str(getattr(mem, "kind", "") or "")
         _kw = _KIND_RECALL_WEIGHT.get(_kind, 1.0)
         # A guessed topic is not evidence of chitchat. Preserve explicit test/meta gates.
-        if (getattr(temp_mem, "mem_type", "") == "episode"
+        if (getattr(mem, "mem_type", "") == "episode"
                 and _kind == "闲聊"
-                and (getattr(temp_mem, "scene", None) or {}).get("theme_kind") != "known"):
+                and (getattr(mem, "scene", None) or {}).get("theme_kind") != "known"):
             _kw = 1.0
         if _kw <= 0:
             continue
         base_score *= _kw
 
-        # 2026-11-08 修（实测发现的真根因）：原来只看 tags：
-        #     hit_count = len(query_entity_set & set(temp_mem.tags))
-        #   但生产库 234 条的 tags 全是**类别标签**，不是实体：
-        #     人设相关 113 / 核心记忆 65 / stable_profile 45 / 对话 43 / medium 39 ...
-        #   而实体名（朋友 / 火锅 / 面 / 粥）在 tags 里的出现次数是 **0**。
-        #   于是 hit_count 恒为 0、bonus 恒为 0 —— 这条加分路从上线起就没生效过，
-        #   跟 session_init 传不传实体、entity_graph 接不接线都无关。
-        #
-        # 修法：实体命中既看 tags（万一以后有实体标签），**也看正文**。
-        #   实测「用户说想吃火锅」：命中条从 0 条变成 55 条，
-        #   排第 98 名的「唱歌要朋友给链接」被拉到第 2 名 —— 这才是这条加分该干的事。
-        #
-        # 注意上限：ENTITY_BONUS_MAX = 0.1，相对于 sim 的 0.80 权重仍是小量，
-        #   不会让「提到朋友」的记忆挤掉真正相关的。宁小勿大。
-        _entity_hits = query_entity_set & set(temp_mem.tags)
-        _content = temp_mem.content or ""
+        # 实体命中既看 tags，也看正文；上限 ENTITY_BONUS_MAX = 0.1。
+        _entity_hits = query_entity_set & set(mem.tags)
+        _content = mem.content or ""
         for _e in query_entity_set:
             # 已经靠 tags 命中过的就不重复计数（一条记忆同一个实体只加一次）
             if _e not in _entity_hits and _e in _content:
@@ -281,13 +267,13 @@ def hybrid_rerank(
         bonus = min(hit_count * ENTITY_BONUS, ENTITY_BONUS_MAX)
         final_score = base_score + bonus
         # 2026-11-06 知识降权：外头学来的打 0.55 折，不挤掉经历过的
-        if temp_mem.source in KNOWLEDGE_SOURCES:
+        if mem.source in KNOWLEDGE_SOURCES:
             final_score *= KNOWLEDGE_DISCOUNT
         # 2026-11-10 分层降权（方案 A）：久远未召回的乘降权系数，只降权不截断。
         #   注意：乘在最后（知识降权之后），因为两个降权是独立维度，叠加相乘。
-        final_score *= _layer_weight(temp_mem)
+        final_score *= _layer_weight(mem)
         from config import ACTIVE_WINDOW_BONUS, ACTIVE_WINDOW_MIN_SIM
-        if sim >= ACTIVE_WINDOW_MIN_SIM and (temp_mem.effective_from is not None or temp_mem.effective_to is not None):
+        if sim >= ACTIVE_WINDOW_MIN_SIM and (mem.effective_from is not None or mem.effective_to is not None):
             final_score += ACTIVE_WINDOW_BONUS
         scored.append((mem, round(final_score, 4)))
 
@@ -517,7 +503,7 @@ def recall_shortterm(
     top_k: int = None,
     query_text: str = "",
 ) -> List[Tuple[MemoryItem, float]]:
-    """短期记忆召回：语义相似度 + 平方衰减强度 + 24小时新鲜度加成 + topic 命中。
+    """短期记忆召回：语义相似度 + 24小时新鲜度加成 + topic 命中（强度仅作遗忘门槛）。
 
     与长期召回的区别：
       1. 强度用 calculate_shortterm_strength（平方加速衰减），不是线性
@@ -554,8 +540,9 @@ def recall_shortterm(
         #   即使强度高、新鲜，完全不相关的记忆也不该被捞出来。
         if sim < 0.35 and not topic_hit:
             continue
-        strength_norm = strength / 100.0
-        base = sim * WEIGHT_SIM + strength_norm * WEIGHT_STRENGTH
+        base = sim * WEIGHT_SIM
+        if WEIGHT_STRENGTH:
+            base += (strength / 100.0) * WEIGHT_STRENGTH
         last = getattr(temp, "last_mentioned_at", None) or getattr(temp, "create_time", now)
         if now - last <= 86400:
             base += SHORT_TERM_FRESH_BONUS
@@ -729,11 +716,7 @@ def recall_cold(
             continue
         # 词法命中只提供相关性下限，不会绕过上面的过滤条件。
         relevance = max(sim, 0.75 if exact_hit else 0.0, 0.50 if topic_hit else 0.0)
-        try:
-            strength = min(100.0, max(0.0, float(getattr(mem, "strength", 0.0) or 0.0)))
-        except (TypeError, ValueError):
-            strength = 0.0
-        score = round(relevance * 0.95 + (strength / 100.0) * 0.05, 4)
+        score = round(relevance, 4)
         scored.append((mem, score))
 
     scored.sort(key=lambda item: item[1], reverse=True)
@@ -936,16 +919,15 @@ def rrf_recall(
 ) -> List[Tuple[MemoryItem, float]]:
     """RRF 多路融合召回（hybrid_rerank 的可开关替代路径）。
 
-    三路各自排名，再用 rrf_fuse 融合：
+    两路相关性各自排名，再用 rrf_fuse 融合（强度只管生命周期，不参与 RRF 投票）：
         路1 语义       cosine(query, mem.embedding)
         路2 词法/实体  query 实体 vs mem 实体 + tags 命中
-        路3 强度情绪   strength 归一 + 情绪匹配（保证老信号不被丢掉）
 
     加成放在**每一路内部**（RRF 之前，此时还是 0~1 量纲），理由见上方实测。
 
     ⚠️ 与 hybrid_rerank 的区别：
       · hybrid_rerank 是加权求和，分数可跨查询比较
-      · 本函数输出的是 RRF 分（约 0.01~0.05），**只在本次召回内有意义**，别拿去跨查询比较
+      · 本函数输出的是 RRF 分（约 0.01~0.04），**只在本次召回内有意义**，别拿去跨查询比较
       · 不改任何 MemoryItem（打分阶段不污染候选，跟 hybrid_rerank 一致）
     """
     from entity_graph import entities_of, entity_score
@@ -955,9 +937,6 @@ def rrf_recall(
         return []
 
     q_ents = set(_as_names(query_entities))
-    emotion = query_emotion or {}
-    q_valence = emotion.get("valence", "neutral")
-    q_intensity = emotion.get("intensity", 50.0)
 
     # 问法路由（可选）：只给「同类记忆」一点助推
     route_kind, route_bonus = None, 0.0
@@ -969,7 +948,7 @@ def rrf_recall(
         except Exception:
             route_kind, route_bonus = None, 0.0
 
-    sem, lex, strg = {}, {}, {}
+    sem, lex = {}, {}
     boosted = {}
     # ★ 2026-11-13：meta_only 门控（跟 hybrid_rerank 同一套判据，见那边的长注释）
     #   rrf_recall 是 hybrid_rerank 的替代路径，门控必须一致 ——
@@ -1006,11 +985,6 @@ def rrf_recall(
         hit = len(q_ents & set(getattr(mem, "tags", []) or []))
         s += min(hit * 0.25, 0.5)
         lex[mid] = min(1.0, s)
-        # 路3：强度 + 情绪（0~1）
-        temp, _ = calculate_current_strength(copy.deepcopy(mem))
-        strength_norm = getattr(temp, "strength", 0.0) / 100.0
-        emo_norm = _emotion_match_score(q_valence, q_intensity, temp) / 100.0
-        strg[mid] = min(1.0, strength_norm * 0.8 + emo_norm * 0.2)
         # 路由助推（加在每一路内部，RRF 之前）
         b = 0.0
         if route_kind and route_bonus > 0:
@@ -1021,7 +995,7 @@ def rrf_recall(
         boosted[mid] = b
 
     order = lambda d: sorted(d, key=lambda i: -(d[i] + boosted.get(i, 0.0)))
-    fused = rrf_fuse([order(sem), order(lex), order(strg)])
+    fused = rrf_fuse([order(sem), order(lex)])
 
     byid = {m.mem_id: m for m in candidates}
     out = []
@@ -1060,6 +1034,46 @@ def rrf_recall_selftest() -> None:
     print("recall_engine.rrf_recall selftest OK")
 
 
+def strength_invariance_selftest() -> None:
+    """强度只管生命周期，不改变相关度相近记忆的排序。"""
+    now = datetime.now().timestamp()
+    low_str_more_rel = MemoryItem("项目发布检查清单", strength=35.0, create_time=now, last_recalled_at=now)
+    high_str_less_rel = MemoryItem("项目日常闲聊记录", strength=98.0, create_time=now, last_recalled_at=now)
+    low_str_more_rel.embedding = [0.95, 0.3122, 0.0]
+    high_str_less_rel.embedding = [0.90, 0.4359, 0.0]
+    q = [1.0, 0.0, 0.0]
+
+    # 1. hybrid_rerank: 更相关但低强度的记忆必须排第一
+    hyb = hybrid_rerank(q, [], {"valence": "neutral", "intensity": 0},
+                        [high_str_less_rel, low_str_more_rel], top_k=2, update_strength=False)
+    assert hyb[0][0].mem_id == low_str_more_rel.mem_id, hyb
+
+    # 2. recall_shortterm: 超过遗忘门槛后，低强度高相关排第一；低于门槛则淘汰
+    st_low = MemoryItem("短期高相关记录", mem_type="short_term", strength=40.0,
+                        create_time=now - 20 * 3600, last_mentioned_at=now - 20 * 3600)
+    st_high = MemoryItem("短期次相关记录", mem_type="short_term", strength=98.0,
+                         create_time=now, last_mentioned_at=now)
+    st_forgotten = MemoryItem("短期已遗忘记录", mem_type="short_term", strength=10.0,
+                              create_time=now - 4 * 86400, last_mentioned_at=now - 4 * 86400)
+    st_low.embedding = [0.95, 0.3122, 0.0]
+    st_high.embedding = [0.90, 0.4359, 0.0]
+    st_forgotten.embedding = [1.0, 0.0, 0.0]
+    st_res = recall_shortterm(q, [st_high, st_low, st_forgotten], top_k=3)
+    assert [m.mem_id for m, _ in st_res] == [st_low.mem_id, st_high.mem_id], st_res
+
+    # 3. recall_cold: 纯相关度排序
+    cold_res = recall_cold(q, [high_str_less_rel, low_str_more_rel], top_k=2)
+    assert cold_res[0][0].mem_id == low_str_more_rel.mem_id, cold_res
+
+    # 4. rrf_recall: 仅语义 + 词法两路，不受强度影响
+    rrf_res = rrf_recall(q, [], {"valence": "neutral", "intensity": 0},
+                         [high_str_less_rel, low_str_more_rel], top_k=2)
+    assert rrf_res[0][0].mem_id == low_str_more_rel.mem_id, rrf_res
+
+    print("recall_engine.strength_invariance selftest OK")
+
+
 if __name__ == "__main__":
     rrf_selftest()
     rrf_recall_selftest()
+    strength_invariance_selftest()

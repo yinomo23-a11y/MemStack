@@ -21,6 +21,14 @@ class MemoryToolsTests(unittest.TestCase):
                                     encoding="utf-8", timeout=45)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_mcp_initialize_reports_memstack_name(self):
+        with tempfile.TemporaryDirectory() as folder:
+            req = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+            mcp = self.run_entrypoint(folder, "mcp_server.py", json.dumps(req) + "\n")
+            self.assertEqual(mcp.returncode, 0, mcp.stderr)
+            reply = json.loads(mcp.stdout)
+            self.assertEqual(reply["result"]["serverInfo"]["name"], "memstack")
+
     def test_cli_rejects_invalid_json(self):
         with tempfile.TemporaryDirectory() as folder:
             for payload in ("{", "[]", "null", '{"query": NaN}'):

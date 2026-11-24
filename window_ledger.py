@@ -4,7 +4,7 @@ r"""window_ledger.py —— 窗口账本（T08，2026-11-08）
 每轮对话的原始记录，是三个能力的地基：
     备注（当时的想法）        ← 想法存这里，别处没地方放
     首屏交接的「最近一天原话」 ← read_recent_hours(24)
-    情境段（90 分钟切）        ← 按 turns.jsonl 的时间切
+    情景聚合数据源            ← 现行情景切分见 episode.py（默认 600 秒 / 10 分钟断档）
 
 目录结构（跟设计文档一致）：
     data/window/<sessionId>/turns.jsonl       一行一轮，UTF-8 追加
