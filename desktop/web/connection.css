@@ -1,0 +1,23 @@
+[hidden] { display:none!important; }
+.nav .nav-l, .nav .nav-r { flex: 0 1 auto; min-width: 0; }
+.nav .nav-r { gap:6px; }
+@media (max-width: 1320px) { .nav #navLock { display:none; } }
+@media (max-width: 1150px) { .nav #navTotal { display:none; } }
+.workspace-empty { flex:1; display:grid; align-content:center; justify-items:center; gap:12px; }
+.workspace-empty h1 { font-size:20px; color:#dbe9fa; margin:0; }
+.workspace-empty p { font-size:13px; color:#98acc6; margin:0 0 8px; }
+.source-dialog { width:min(550px,90vw); padding:24px; background:#0e1727; color:#e3efff; border:1px solid #385575; border-radius:12px; }
+.source-dialog::backdrop { background:#010409c9; }
+.source-head,.source-actions,.source-types { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.source-head { justify-content:space-between; }
+.source-head h2 { margin:0; font-size:18px; }
+.source-types { margin:18px 0; }
+.source-dialog p { color:#a2b5cf; font-size:12px; }
+.source-dialog form { display:grid; gap:12px; }
+.source-dialog label { display:grid; gap:5px; font-size:12px; color:#b8cce6; }
+.source-dialog input,.source-dialog select { width:100%; min-width:0; height:32px; color:#e0ebfc; background:#080f1d; border:1px solid #354d6c; padding:5px 8px; border-radius:5px; }
+.fields-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.source-dialog #sourceError { color:#ffabb4; min-height:1em; }
+.source-dialog .btn-nav,.workspace-empty .btn-nav { padding:7px 11px; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid #71b5ff; outline-offset:2px; }
+

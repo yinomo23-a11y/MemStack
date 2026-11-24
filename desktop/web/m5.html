@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MEMORY LAB // 05 · 上下文与交接台</title>
+<style>
+  :root {
+    --bg: #05070B;
+    --card: #0A0E16;
+    --card-in: #0E1420;
+    --border: rgba(154, 182, 222, 0.11);
+    --border-hi: rgba(110, 172, 250, 0.45);
+    --text: #ECF2FA;
+    --muted: #7B8EA8;
+    --dim: #506178;
+    --blue: #659BE6;
+    --blue-hi: #94C4FF;
+    --silver: #A6B5C9;
+    --violet: #7B76B8;
+    --teal: #52C8A8;
+    --amber: #DFAD64;
+    --red: #DF6B78;
+    --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: radial-gradient(circle at 24% -10%, rgba(56, 98, 168, 0.14), transparent 48%), var(--bg);
+    color: var(--text); font-family: var(--sans); font-size: 11.5px; user-select: none;
+  }
+  .app { display: flex; flex-direction: column; height: 100vh; width: 100vw; overflow: hidden; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* Top Instrument Header (46px fixed) */
+  .top {
+    height: 46px; min-height: 46px; max-height: 46px; flex-shrink: 0;
+    background: rgba(7, 10, 16, 0.88);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; gap: 12px; backdrop-filter: blur(12px);
+  }
+  .top-l { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .brand { display: flex; align-items: center; gap: 9px; white-space: nowrap; flex-shrink: 0; }
+  .orb { width: 8px; height: 8px; border-radius: 50%; background: var(--blue-hi); box-shadow: 0 0 10px var(--blue); }
+  .b-title { font-family: var(--mono); font-size: 12.5px; font-weight: 700; letter-spacing: 1.2px; color: #F4F8FF; }
+  .pill-bar {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: #0B1019; border: 1px solid rgba(154,182,222,0.14);
+    border-radius: 999px; padding: 3px; white-space: nowrap;
+  }
+  .pill {
+    background: transparent; border: 1px solid transparent; color: var(--muted);
+    font-size: 11px; padding: 3px 11px; border-radius: 999px; cursor: pointer;
+    transition: all .14s ease; font-family: inherit; white-space: nowrap;
+  }
+  .pill:hover { color: #E5EEF9; }
+  .pill.active {
+    background: rgba(101, 155, 230, 0.20);
+    border-color: rgba(130, 188, 255, 0.42);
+    color: #F5F9FF; font-weight: 600;
+  }
+  .top-r { display: flex; align-items: center; gap: 8px; flex-shrink: 0; white-space: nowrap; }
+  .accent-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(101, 155, 230, 0.11); border: 1px solid rgba(118, 178, 250, 0.38);
+    color: #9EC8FF; border-radius: 999px; padding: 4px 11px; font-size: 11px;
+    cursor: pointer; font-family: inherit; transition: all .14s; white-space: nowrap;
+  }
+  .accent-pill:hover { background: rgba(101, 155, 230, 0.20); color: #FFF; }
+  .accent-pill i { width: 5.5px; height: 5.5px; border-radius: 50%; background: var(--blue-hi); box-shadow: 0 0 7px var(--blue-hi); }
+  .ro-pill {
+    font-family: var(--mono); font-size: 10px; color: #62D2B2;
+    padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+    background: rgba(82, 200, 168, 0.09); border: 1px solid rgba(82, 200, 168, 0.28);
+  }
+  .warn-pill {
+    font-family: var(--mono); font-size: 10px; color: #E4B56E;
+    padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+    background: rgba(223, 173, 100, 0.09); border: 1px solid rgba(223, 173, 100, 0.28);
+  }
+
+  /* Balanced 2-Column Layout */
+  .main-grid {
+    flex: 1; min-height: 0; display: grid;
+    grid-template-columns: 1.24fr 1fr;
+    gap: 12px; padding: 11px 15px 13px; overflow: hidden;
+  }
+  .col-stack { display: flex; flex-direction: column; gap: 11px; min-height: 0; overflow: hidden; }
+
+  .card {
+    background: linear-gradient(180deg, rgba(16, 22, 34, 0.72) 0%, rgba(10, 14, 22, 0.90) 100%);
+    border: 1px solid var(--border);
+    border-radius: 13px; padding: 11px 14px;
+    display: flex; flex-direction: column; overflow: hidden; min-height: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+  /* Strictly locked 22px single-line headers and footers -> 0px vertical jump */
+  .c-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; margin-bottom: 6px; flex-shrink: 0;
+    height: 22px; min-height: 22px; max-height: 22px; overflow: hidden;
+  }
+  .c-title-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
+  .c-title { font-size: 12.5px; font-weight: 600; color: #F1F6FD; letter-spacing: 0.2px; white-space: nowrap; }
+  .c-sub { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge {
+    font-family: var(--mono); font-size: 9.5px; padding: 1.5px 7px; border-radius: 5px;
+    white-space: nowrap; flex-shrink: 0; line-height: 1.3;
+  }
+  .badge.warn { color: #E4B56E; background: rgba(223,173,100,0.11); border: 1px solid rgba(223,173,100,0.32); }
+  .badge.ok { color: #64D4B4; background: rgba(82,200,168,0.10); border: 1px solid rgba(82,200,168,0.28); }
+  .badge.blue { color: #96C4FF; background: rgba(101,155,230,0.13); border: 1px solid rgba(118,178,250,0.34); }
+  .badge.err { color: #F08A95; background: rgba(223,107,120,0.12); border: 1px solid rgba(223,107,120,0.35); }
+
+  .legend { display: flex; gap: 12px; font-size: 10.2px; color: #96A8C2; align-items: center; white-space: nowrap; flex-shrink: 0; }
+  .leg-i { display: inline-flex; align-items: center; gap: 5px; }
+  .leg-l { display: inline-block; width: 12px; border-radius: 2px; }
+
+  .card-foot {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-top: 6px; margin-top: 6px; border-top: 1px solid rgba(154,182,222,0.08);
+    font-size: 10.2px; color: var(--muted); flex-shrink: 0; gap: 10px;
+    height: 22px; min-height: 22px; max-height: 22px; white-space: nowrap; overflow: hidden;
+  }
+  .card-foot > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Interactive XY Curve Stage */
+  .xy-stage { flex: 1; position: relative; min-height: 110px; cursor: crosshair; overflow: hidden; }
+  .xy-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .ftip {
+    position: absolute; pointer-events: none; z-index: 12; display: none;
+    background: rgba(8, 12, 20, 0.95); border: 1px solid rgba(120, 182, 255, 0.45);
+    border-radius: 9px; padding: 7px 10px; font-size: 10.5px; color: var(--text);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.72); min-width: 196px; backdrop-filter: blur(8px);
+  }
+  .ftip.show { display: block; }
+  .ft-h {
+    display: flex; justify-content: space-between; gap: 10px;
+    font-family: var(--mono); font-size: 9.5px; color: var(--blue-hi);
+    padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid rgba(154,182,222,0.12);
+  }
+  .ft-r { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 2.5px; }
+  .ft-k { color: #8FA2BC; display: inline-flex; align-items: center; gap: 5px; }
+  .ft-v { font-family: var(--mono); font-weight: 600; color: #F4F8FF; }
+
+  /* 3-Unit Strict Isolation Strip */
+  .unit-strip {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    margin-top: 8px; flex-shrink: 0;
+  }
+  .u-box {
+    background: rgba(14, 20, 32, 0.72); border: 1px solid rgba(154, 182, 222, 0.10);
+    border-radius: 8px; padding: 7px 10px; display: flex; flex-direction: column; gap: 3px;
+  }
+  .u-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .u-name { font-size: 11px; font-weight: 600; color: #EBF2FC; white-space: nowrap; }
+  .u-val { font-family: var(--mono); font-size: 12.5px; font-weight: 700; color: #F2F7FF; }
+  .u-sub { font-size: 9.6px; color: #7185A1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .u-bar { height: 4px; border-radius: 99px; background: #151E2E; overflow: hidden; margin-top: 2px; }
+  .u-fill { height: 100%; border-radius: 99px; }
+
+  /* Bottom-Left Whitelist Editor + 403 Probe */
+  .wl-split {
+    flex: 1; min-height: 0; display: grid; grid-template-columns: 1.05fr 1fr; gap: 12px; overflow: hidden;
+  }
+  .sub-panel {
+    background: rgba(13, 18, 29, 0.70); border: 1px solid rgba(154,182,222,0.09);
+    border-radius: 9px; padding: 9px 11px; display: flex; flex-direction: column; justify-content: space-between; min-height: 0; overflow: hidden;
+  }
+  .sp-title {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 10.8px; font-weight: 600; color: #DCE8F8; margin-bottom: 6px; flex-shrink: 0;
+    height: 18px; white-space: nowrap;
+  }
+  .sw-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 8px; border-radius: 6px; background: rgba(10,14,22,0.65);
+    border: 1px solid rgba(154,182,222,0.08); margin-bottom: 5px;
+  }
+  .sw-lbl { display: flex; flex-direction: column; gap: 1px; }
+  .sw-k { font-family: var(--mono); font-size: 10.5px; color: #EAF2FC; }
+  .sw-d { font-size: 9.4px; color: var(--muted); }
+  .toggle {
+    width: 34px; height: 18px; border-radius: 999px; background: #192436; border: 1px solid rgba(154,182,222,0.22);
+    position: relative; cursor: pointer; transition: all .15s; flex-shrink: 0;
+  }
+  .toggle::after {
+    content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px;
+    border-radius: 50%; background: #8BA0BC; transition: all .15s;
+  }
+  .toggle.on { background: rgba(82,200,168,0.22); border-color: rgba(82,200,168,0.60); }
+  .toggle.on::after { left: 18px; background: #64D4B4; }
+
+  /* Custom Instrument Slider */
+  .p-row { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+  .p-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 10.5px; }
+  .p-name { color: #DCE8F8; font-weight: 500; }
+  .p-val { font-family: var(--mono); font-weight: 700; color: var(--blue-hi); }
+  .c-slider { position: relative; height: 14px; display: flex; align-items: center; cursor: pointer; }
+  .cs-track { position: relative; width: 100%; height: 4.5px; border-radius: 99px; background: #151E2E; }
+  .cs-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; background: linear-gradient(90deg, #3D6DB4, #7AB4FF); }
+  .cs-def { position: absolute; top: -2px; width: 1.5px; height: 8.5px; background: rgba(255,255,255,0.35); transform: translateX(-50%); pointer-events: none; }
+  .cs-thumb {
+    position: absolute; top: 50%; width: 11.5px; height: 11.5px; border-radius: 50%;
+    background: #0B111C; border: 2px solid #96C6FF; box-shadow: 0 0 8px rgba(101,155,230,0.65);
+    transform: translate(-50%,-50%); pointer-events: none;
+  }
+  .c-slider input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; }
+
+  .json-mini {
+    font-family: var(--mono); font-size: 9.8px; color: #9CB4D4;
+    background: #070B12; border: 1px solid rgba(154,182,222,0.10);
+    border-radius: 6px; padding: 6px 8px; line-height: 1.4; white-space: pre; overflow: hidden;
+  }
+
+  /* 403 Path Probe List */
+  .probe-list { display: flex; flex-direction: column; gap: 4.5px; flex: 1; justify-content: center; min-height: 0; }
+  .probe-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    padding: 5px 8px; border-radius: 6px; cursor: pointer;
+    background: rgba(10,14,22,0.68); border: 1px solid rgba(154,182,222,0.08);
+    transition: border-color .12s, background .12s;
+  }
+  .probe-item:hover { border-color: rgba(118,178,250,0.38); background: rgba(16,24,38,0.85); }
+  .probe-item.sel { border-color: rgba(118,178,250,0.55); background: rgba(18,28,44,0.92); }
+  .probe-p { font-family: var(--mono); font-size: 9.6px; color: #C8D8EC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .btn {
+    background: #101726; border: 1px solid rgba(154,182,222,0.22); color: #D2E3F8;
+    font-size: 11px; padding: 5px 11px; border-radius: 7px; cursor: pointer; font-family: inherit; transition: all .14s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: #18243A; border-color: rgba(130,188,255,0.58); color: #FFF; }
+  .btn.pri {
+    flex: 1; background: linear-gradient(90deg, rgba(72,126,204,0.28), rgba(101,155,230,0.22));
+    border-color: rgba(130,188,255,0.52); color: #D4E8FF; font-weight: 600;
+  }
+  .btn.pri:hover { background: linear-gradient(90deg, rgba(72,126,204,0.42), rgba(101,155,230,0.34)); }
+  .act-row { display: flex; gap: 8px; margin-top: 6px; flex-shrink: 0; }
+
+  /* Right Top: Handover Schema Editor */
+  .form-grid { display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: space-between; min-height: 0; }
+  .f-row2 { display: grid; grid-template-columns: 1.5fr 0.7fr; gap: 8px; }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .f-lbl { display: flex; justify-content: space-between; font-size: 10px; color: #8FA2BC; }
+  .inp {
+    width: 100%; background: #070B12; border: 1px solid rgba(154,182,222,0.16);
+    border-radius: 6px; color: #ECF2FA; font-family: var(--sans); font-size: 11px;
+    padding: 5.5px 9px; outline: none; transition: border-color .14s;
+  }
+  .inp:focus { border-color: rgba(118,178,250,0.55); }
+  .cap-bar {
+    display: flex; align-items: center; gap: 8px; padding: 5px 9px; border-radius: 7px;
+    background: rgba(14,20,32,0.75); border: 1px solid rgba(154,182,222,0.10);
+  }
+  .cap-track { flex: 1; height: 5px; border-radius: 99px; background: #141D2D; overflow: hidden; }
+  .cap-fill { height: 100%; border-radius: 99px; transition: width .15s, background .15s; }
+  .chip-row { display: flex; gap: 5px; align-items: center; flex-wrap: nowrap; overflow: hidden; }
+  .mini-chip {
+    background: #0C121D; border: 1px solid rgba(154,182,222,0.16); color: #8CA0BA;
+    font-family: var(--mono); font-size: 9.5px; padding: 2.5px 8px; border-radius: 5px; cursor: pointer;
+    white-space: nowrap;
+  }
+  .mini-chip.on { background: rgba(101,155,230,0.20); border-color: rgba(130,188,255,0.48); color: #EAF2FF; }
+
+  /* Right Bottom: build_inject_text Preview */
+  .inject-box {
+    flex: 1; min-height: 0; background: #070B12; border: 1px solid rgba(154,182,222,0.14);
+    border-radius: 8px; padding: 9px 11px; font-family: var(--mono); font-size: 10.6px;
+    line-height: 1.55; color: #CFE0F6; overflow-y: auto; white-space: pre-wrap; user-select: text;
+  }
+  .inject-box .mk { color: #64D4B4; }
+  .inject-box .hd { color: #8AC2FF; }
+  .inject-box .ex { color: #F08A95; }
+  .meta-3 {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 7px; flex-shrink: 0;
+  }
+  .m3-box {
+    background: rgba(14,20,32,0.68); border: 1px solid rgba(154,182,222,0.08);
+    border-radius: 7px; padding: 5px 9px;
+  }
+  .m3-k { font-size: 9.4px; color: var(--muted); }
+  .m3-v { font-family: var(--mono); font-size: 11.2px; font-weight: 600; color: #EFF5FF; margin-top: 1px; }
+</style>
+<link rel="stylesheet" href="button-feedback.css">
+</head>
+<body>
+<div class="app">
+  <!-- TOP HEADER -->
+  <header class="top">
+    <div class="top-l">
+      <div class="brand">
+        <i class="orb"></i>
+        <span class="b-title">MEMORY LAB // 05</span>
+      </div>
+      <div class="pill-bar" id="profPills">
+        <button class="pill active" data-p="desktop" id="pill_desktop">—</button>
+        <button class="pill" data-p="headless" id="pill_headless">—</button>
+        <button class="pill" data-p="web" id="pill_web">—</button>
+      </div>
+    </div>
+    <div class="top-r">
+      <button class="accent-pill" id="btnSnap"><i></i> 悬停 X/Y 准星：磁吸曲线</button>
+      <span class="ro-pill">3 单位隔离锁: ON (tokens ≠ chars)</span>
+      <span class="warn-pill">白名单护栏: 403 越权拦截</span>
+    </div>
+  </header>
+
+  <!-- MAIN 2-COLUMN WORKSPACE -->
+  <main class="main-grid">
+    <!-- LEFT COLUMN: 3-Unit Budgets Curve + DSH Whitelist & 403 Probe -->
+    <div class="col-stack">
+      <!-- Card 1: 3-Unit Budget Strict Separation & Restrained 3-Tier Satin Curves -->
+      <section class="card" style="flex:1.12">
+        <div class="c-head">
+          <div class="c-title-wrap">
+            <span class="c-title" id="c1Title">三套预算单位严格分离走势</span>
+            <span class="badge blue">禁止换算相加</span>
+          </div>
+          <div class="legend">
+            <span class="leg-i"><i class="leg-l" style="height:2.2px;background:#659BE6"></i>DSH窗口% (tokens)</span>
+            <span class="leg-i"><i class="leg-l" style="height:1.3px;background:#A6B5C9"></i>记忆注入推算 (chars)</span>
+            <span class="leg-i"><i class="leg-l" style="height:0.9px;background:#7B76B8"></i>开场init (companion)</span>
+          </div>
+        </div>
+
+        <div class="xy-stage" id="box1">
+          <canvas id="cvBudget"></canvas>
+          <div class="ftip" id="tip1"></div>
+        </div>
+
+        <div class="unit-strip">
+          <div class="u-box">
+            <div class="u-top"><span class="u-name">① DSH 对话主窗</span><span class="badge blue">tokens</span></div>
+            <div class="u-val" id="u1Val">—</div>
+            <div class="u-sub" id="u1Sub">—</div>
+            <div class="u-bar"><div class="u-fill" id="u1Fill" style="width:0%;background:#659BE6"></div></div>
+          </div>
+          <div class="u-box">
+            <div class="u-top"><span class="u-name">② 每轮记忆召回截断</span><span class="badge ok">chars 字数</span></div>
+            <div class="u-val" id="u2Val">—</div>
+            <div class="u-sub" id="u2Sub">—</div>
+            <div class="u-bar"><div class="u-fill" style="width:0%;background:#A6B5C9"></div></div>
+          </div>
+          <div class="u-box">
+            <div class="u-top"><span class="u-name">③ 新会话 companion</span><span class="badge warn">init 预算</span></div>
+            <div class="u-val" id="u3Val">—</div>
+            <div class="u-sub" id="u3Sub">—</div>
+            <div class="u-bar"><div class="u-fill" style="width:0%;background:#7B76B8"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Card 2: DSH Whitelist Config Editor + 403 Security Guardrail -->
+      <section class="card" style="flex:0.94">
+        <div class="c-head">
+          <div class="c-title-wrap">
+            <span class="c-title">运行开关设置 &amp; 敏感文件防误改护栏</span>
+            <span class="c-sub">左侧仅调整安全清理开关，右侧点击即可验证密钥/记忆库受 403 保护拦截</span>
+          </div>
+          <span class="badge ok" id="wlBadge">安全白名单已加锁 (只改授权开关)</span>
+        </div>
+
+        <div class="wl-split">
+          <!-- Left: Whitelisted Controls -->
+          <div class="sub-panel">
+            <div>
+              <div class="sp-title">
+                <span>允许调整 · 会话自动清理与精简开关</span>
+                <span class="badge blue" style="font-size:8.8px">可写白名单</span>
+              </div>
+              <div class="sw-row">
+                <div class="sw-lbl"><span class="sw-k">自动清理旧会话碎片 (enabled)</span><span class="sw-d">开启后定期清理无效 .zstd 旧对话缓存，避免空间堆积</span></div>
+                <div class="toggle on" id="tgEnabled"></div>
+              </div>
+              <div class="sw-row">
+                <div class="sw-lbl"><span class="sw-k">仅试跑演练不真删 (dryRun)</span><span class="sw-d">开启后只统计可清理条目，不删除硬盘历史记录</span></div>
+                <div class="toggle" id="tgDry"></div>
+              </div>
+              <div class="p-row" style="margin-top:4px">
+                <div class="p-top"><span class="p-name">工具说明精简触发数 (minTools)</span><span class="p-val" id="slimVal">未声明 (默认 6)</span></div>
+                <div class="c-slider" id="slimWrap">
+                  <div class="cs-track">
+                    <div class="cs-fill" id="slimFill" style="width:8%"></div>
+                    <div class="cs-def" style="left:8%" title="插件默认值 minTools = 6"></div>
+                    <div class="cs-thumb" id="slimThumb" style="left:8%"></div>
+                  </div>
+                  <input type="range" id="slimInp" min="1" max="64" step="1" value="6" />
+                </div>
+              </div>
+            </div>
+            <div class="json-mini" id="vacPreview"></div>
+          </div>
+
+          <!-- Right: 403 Unauthorized Path Probe -->
+          <div class="sub-panel">
+            <div class="sp-title">
+              <span>文件访问权限检测 · 点击任意一项验证是否拦截</span>
+              <span class="badge warn" id="probeHttp">HTTP 403 护栏</span>
+            </div>
+            <div class="probe-list" id="probeList"></div>
+            <div class="act-row">
+              <button class="btn pri" id="btnWlSave">在沙盒应用设置</button>
+              <button class="btn" id="btnWlReset">恢复实测值</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-foot" id="wlFoot">
+          <span>说明：网页端只能改左侧两个白名单项；大模型 API 密钥、核心记忆库和插件源码都会返回 403 拦截</span>
+          <span class="mono" style="color:#64D4B4">403 越权拦截就绪</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- RIGHT COLUMN: state\handover.json Editor + build_inject_text Live Preview -->
+    <div class="col-stack">
+      <!-- Card 3: handover.json Editor (120 char hard cap + 24h TTL) -->
+      <section class="card" style="flex:1.08">
+        <div class="c-head">
+          <div class="c-title-wrap">
+            <span class="c-title">state\handover.json 交接单编辑器</span>
+            <span class="c-sub">120 字硬截断 · 24h 过期</span>
+          </div>
+          <span class="badge ok" id="ttlBadge">沙盒 TTL 24h</span>
+        </div>
+
+        <div class="form-grid">
+          <div class="f-row2">
+            <div class="field">
+              <div class="f-lbl"><span>正在聊的主题 (topic)</span><span class="mono" id="lenTopic">—</span></div>
+              <input class="inp" id="hoTopic" value="" />
+            </div>
+            <div class="field">
+              <div class="f-lbl"><span>当下情绪 (emotion)</span><span class="mono" id="lenEmo">—</span></div>
+              <input class="inp" id="hoEmo" value="" />
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="f-lbl"><span>未完待续尾巴 (pending_tail)</span><span class="mono" id="lenPend">—</span></div>
+            <input class="inp" id="hoPend" value="" />
+          </div>
+
+          <div class="field">
+            <div class="f-lbl"><span>细节/琐事 trivia（最多 HANDOVER_TRIVIA_MAX=3 条，顿号分隔）</span><span class="mono" id="lenTriv">—</span></div>
+            <input class="inp" id="hoTriv" value="" />
+          </div>
+
+          <div class="cap-bar">
+            <span class="mono" style="font-size:10px;color:#9BB0CA;white-space:nowrap">四块合计硬帽</span>
+            <div class="cap-track"><div class="cap-fill" id="capFill" style="width:0%;background:#659BE6"></div></div>
+            <span class="mono" id="capNum" style="font-size:11px;font-weight:700;color:#94C4FF;white-space:nowrap">0 / 120 字</span>
+          </div>
+
+          <div>
+            <div class="p-top" style="margin-bottom:2px">
+              <span class="p-name">TTL 时效滑块（超过 24.0h 读出视为 None）</span>
+              <span class="p-val" id="ttlVal">4.5 h</span>
+            </div>
+            <div class="c-slider" id="ttlWrap">
+              <div class="cs-track">
+                <div class="cs-fill" id="ttlFill" style="width:15%"></div>
+                <div class="cs-def" style="left:80%" title="HANDOVER_TTL_HOURS = 24h"></div>
+                <div class="cs-thumb" id="ttlThumb" style="left:15%"></div>
+              </div>
+              <input type="range" id="ttlInp" min="0" max="30" step="0.5" value="4.5" />
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <div class="chip-row" id="trigChips">
+              <button class="mini-chip on" data-t="rotate">rotate</button>
+              <button class="mini-chip" data-t="cross_day">cross_day</button>
+              <button class="mini-chip" data-t="compress">compress</button>
+              <button class="mini-chip" id="btnIntimate">is_intimate: false</button>
+            </div>
+            <span class="mono" style="font-size:9.5px;color:#7B8EA8;white-space:nowrap">source: session</span>
+          </div>
+
+          <div class="act-row" style="margin-top:0">
+            <button class="btn pri" id="btnHoSave">保留本次沙盒交接</button>
+            <button class="btn" id="btnModuleUndo" hidden disabled>回滚本页</button>
+            <span id="moduleUndoStatus" role="status" hidden></span>
+            <button class="btn" id="btnHoReset">重置脱敏示例</button>
+          </div>
+        </div>
+
+        <div class="card-foot" id="hoFoot">
+          <span>本地交接沙盒</span>
+          <span class="mono" style="color:#64D4B4">seq #4</span>
+        </div>
+      </section>
+
+      <!-- Card 4: build_inject_text() + MEM_START Idempotent Preview -->
+      <section class="card" style="flex:0.98">
+        <div class="c-head">
+          <div class="c-title-wrap">
+            <span class="c-title">build_inject_text() + _fit() 实时注入预览</span>
+            <span class="badge blue">幂等替换 &lt;!--MEM_START--&gt;</span>
+          </div>
+          <span class="badge ok" id="injStatus">INJECT_MAX_CHARS = 168 · OK</span>
+        </div>
+
+        <pre class="inject-box" id="injectPre"></pre>
+
+        <div class="meta-3">
+          <div class="m3-box">
+            <div class="m3-k">_fit() 裁剪后正文字数</div>
+            <div class="m3-v" id="mFitChars">—</div>
+          </div>
+          <div class="m3-box">
+            <div class="m3-k">含标记总长度</div>
+            <div class="m3-v" id="mTotChars">—</div>
+          </div>
+          <div class="m3-box">
+            <div class="m3-k">重建门槛 &amp; 文件锁</div>
+            <div class="m3-v">≥3 块/6h · Lock OK</div>
+          </div>
+        </div>
+
+        <div class="card-foot">
+          <span>幂等机制：session_init.strip_old_block() 先剥离旧标记块，再注入新块避免重复堆叠</span>
+          <span class="mono" style="color:#8AC2FF">HANDOVER_MAX = 120</span>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script src="gemini-data.js"></script>
+<script>
+(function(){
+  const LAB = window.parent.labRuntime;
+  const fetch = (...args) => parent.labRuntime.request(...args);
+  const escapeHtml = window.parent.escapeHtml;
+
+  const DPR = Math.min(2, window.devicePixelRatio || 1);
+  let snapMode = true;
+  let curProf = 'desktop';
+
+  const PROFS = LAB.profiles;
+
+  function fitCv(cv) {
+    const r = cv.parentElement.getBoundingClientRect();
+    const w = Math.max(220, Math.round(r.width || 560)), h = Math.max(110, Math.round(r.height || 170));
+    const tw = Math.round(w * DPR), th = Math.round(h * DPR);
+    if (Math.abs(cv.width - tw) > 1 || Math.abs(cv.height - th) > 1) { cv.width = tw; cv.height = th; }
+    const ctx = cv.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    return { ctx, w, h };
+  }
+  function buildMonotone(ctx, pts) {
+    const n = pts.length; if (n < 2) return;
+    const dx=[], dy=[], m=[];
+    for (let i=0;i<n-1;i++){ dx[i]=pts[i+1].x-pts[i].x; dy[i]=pts[i+1].y-pts[i].y; m[i]=dy[i]/(dx[i]||1e-6); }
+    const t = new Array(n).fill(0); t[0]=m[0]; t[n-1]=m[n-2];
+    for (let i=1;i<n-1;i++) t[i]=(m[i-1]*m[i]<=0)?0:(m[i-1]+m[i])*0.5;
+    for (let i=0;i<n-1;i++){
+      if (Math.abs(m[i])<1e-6){ t[i]=0; t[i+1]=0; continue; }
+      const a=t[i]/m[i], b=t[i+1]/m[i], h=Math.hypot(a,b);
+      if (h>3){ const s=3/h; t[i]=s*a*m[i]; t[i+1]=s*b*m[i]; }
+    }
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i=0;i<n-1;i++){
+      const h=dx[i]/3;
+      ctx.bezierCurveTo(pts[i].x+h, pts[i].y+h*t[i], pts[i+1].x-h, pts[i+1].y-h*t[i+1], pts[i+1].x, pts[i+1].y);
+    }
+  }
+  function sampleInterp(arr, fIdx) {
+    const n = arr.length;
+    const i0 = Math.max(0, Math.min(n-1, Math.floor(fIdx))), i1 = Math.max(0, Math.min(n-1, Math.ceil(fIdx)));
+    if (i0 === i1) return arr[i0];
+    const u = fIdx - i0, cs = (1 - Math.cos(u * Math.PI)) * 0.5;
+    return arr[i0] + (arr[i1] - arr[i0]) * (u * 0.65 + cs * 0.35);
+  }
+  function drawPill(ctx, w, h, txt, px, py) {
+    ctx.save(); ctx.font = '600 9.5px "JetBrains Mono", monospace';
+    const pw = ctx.measureText(txt).width + 10, ph = 15.5;
+    const rx = Math.max(2, Math.min(w - pw - 2, px - pw / 2)), ry = Math.max(2, Math.min(h - ph - 1, py - ph / 2));
+    ctx.fillStyle = '#121B2A'; ctx.strokeStyle = 'rgba(118,180,255,0.55)'; ctx.lineWidth = 0.85;
+    ctx.beginPath(); ctx.roundRect(rx, ry, pw, ph, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#A8D0FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(txt, rx + pw / 2, ry + ph / 2 + 0.4); ctx.restore();
+  }
+
+  // ===== CHART: 3-UNIT SEPARATED CURVES (Restrained 3-tier satin texture matching M4) =====
+  const cv1 = document.getElementById('cvBudget'), box1 = document.getElementById('box1'), tip1 = document.getElementById('tip1');
+  let hov1 = { active: true, x: null, y: null, idx: 11, pinned: true };
+
+  function drawBudget(tPulse) {
+    const { ctx, w, h } = fitCv(cv1);
+    const pr = PROFS[curProf];
+    const N = pr.dshPct.length;
+    const PAD = { l: 44, r: 14, t: 18, b: 22 };
+    const ix = i => PAD.l + (i / (N - 1)) * (w - PAD.l - PAD.r);
+    const vy = v => PAD.t + (1 - Math.max(0, Math.min(100, v)) / 100) * (h - PAD.t - PAD.b);
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.font = '9.5px "JetBrains Mono", monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    [0, 25, 50, 75, 100].forEach(v => {
+      const y = Math.round(vy(v)) + 0.5;
+      ctx.strokeStyle = v === 0 ? 'rgba(148,172,206,0.14)' : 'rgba(148,172,206,0.045)'; ctx.lineWidth = 0.75;
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(w - PAD.r, y); ctx.stroke();
+      ctx.fillStyle = '#5F718A'; ctx.fillText(v + '%', PAD.l - 8, y);
+    });
+
+    // Prompt-Slim guide line + Vacuum Checkpoint verticals
+    const slimY = Math.round(vy(75)) + 0.5;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(101,155,230,0.24)'; ctx.lineWidth = 0.75; ctx.setLineDash([2.5, 4]);
+    ctx.beginPath(); ctx.moveTo(PAD.l, slimY); ctx.lineTo(w - PAD.r, slimY); ctx.stroke();
+    ctx.fillStyle = '#8AC2FF'; ctx.font = '9px "JetBrains Mono", monospace'; ctx.textAlign = 'right';
+    ctx.fillText(`窗口压缩阈值 · minTools=${minToolsVal ?? '默认6'}`, w - PAD.r - 4, slimY - 6);
+    [11, 18].forEach((ck, k) => {
+      const x = Math.round(ix(ck)) + 0.5;
+      ctx.strokeStyle = 'rgba(82,200,168,0.32)'; ctx.setLineDash([2.5, 3]);
+      ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, h - PAD.b); ctx.stroke();
+      ctx.fillStyle = '#64D4B4'; ctx.textAlign = 'center';
+      ctx.fillText(k === 0 ? 'vacuum #1' : 'slim 压缩', x, PAD.t - 6);
+    });
+    ctx.restore();
+
+    ctx.font = '9.5px "JetBrains Mono", "PingFang SC", sans-serif'; ctx.fillStyle = '#5F718A';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    [0, 5, 11, 16, 20, 23].forEach(i => ctx.fillText('T' + (i + 1), ix(i), h - PAD.b + 5));
+
+    const strokeC = (arr, col, lw, fill, glow, core) => {
+      const pts = arr.flatMap((v, i) => v === null ? [] : [{ x: ix(i), y: vy(v) }]);
+      if (pts.length < 2) return;
+      if (fill) {
+        buildMonotone(ctx, pts);
+        ctx.lineTo(pts[pts.length-1].x, h - PAD.b); ctx.lineTo(pts[0].x, h - PAD.b); ctx.closePath();
+        ctx.fillStyle = fill; ctx.fill();
+      }
+      ctx.save();
+      buildMonotone(ctx, pts);
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round';
+      if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = 6; }
+      ctx.stroke();
+      if (core) { ctx.shadowBlur = 0; ctx.strokeStyle = core; ctx.lineWidth = lw * 0.35; ctx.stroke(); }
+      ctx.restore();
+    };
+
+    const gI = ctx.createLinearGradient(0, PAD.t + 26, 0, h - PAD.b);
+    gI.addColorStop(0, 'rgba(123, 118, 184, 0.11)'); gI.addColorStop(1, 'rgba(123, 118, 184, 0)');
+    strokeC(pr.iniPct, '#7B76B8', 0.85, gI);
+
+    const gM = ctx.createLinearGradient(0, PAD.t + 16, 0, h - PAD.b);
+    gM.addColorStop(0, 'rgba(166, 181, 201, 0.055)'); gM.addColorStop(1, 'rgba(166, 181, 201, 0)');
+    strokeC(pr.memPct, '#A6B5C9', 1.12, gM);
+
+    const gD = ctx.createLinearGradient(0, PAD.t, 0, h - PAD.b);
+    gD.addColorStop(0, 'rgba(101, 155, 230, 0.25)'); gD.addColorStop(0.55, 'rgba(101, 155, 230, 0.055)'); gD.addColorStop(1, 'rgba(101, 155, 230, 0)');
+    strokeC(pr.dshPct, '#659BE6', 1.75, gD, 'rgba(101, 155, 230, 0.34)', 'rgba(218, 236, 255, 0.48)');
+
+    // Gentle travelling dot
+    const pF = (tPulse * 3.8) % (N - 1);
+    const pv = sampleInterp(pr.dshPct, pF);
+    ctx.fillStyle = 'rgba(214, 236, 255, 0.90)';
+    if (pv != null) { ctx.beginPath(); ctx.arc(ix(pF), vy(pv), 2.0, 0, Math.PI * 2); ctx.fill(); }
+
+    if (hov1.active && pr.dshPct.some(v=>v!==null)) {
+      const fIdx = hov1.pinned ? hov1.idx : Math.max(0, Math.min(N - 1, ((hov1.x - PAD.l) / (w - PAD.l - PAD.r)) * (N - 1)));
+      const cx = ix(fIdx), vd = sampleInterp(pr.dshPct, fIdx), vm = sampleInterp(pr.memPct, fIdx), vi = sampleInterp(pr.iniPct, fIdx);
+      const rawY = hov1.y !== null ? Math.max(0, Math.min(100, (1 - (hov1.y - PAD.t) / (h - PAD.t - PAD.b)) * 100)) : vd;
+      const tv = snapMode ? (vd ?? rawY) : rawY;
+      const cy = vy(tv ?? 0);
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(130, 183, 247, 0.46)'; ctx.lineWidth = 0.75; ctx.setLineDash([2.5, 3]);
+      ctx.beginPath(); ctx.moveTo(cx, PAD.t); ctx.lineTo(cx, h - PAD.b); ctx.stroke();
+      ctx.strokeStyle = 'rgba(205, 222, 244, 0.20)';
+      ctx.beginPath(); ctx.moveTo(PAD.l, cy); ctx.lineTo(w - PAD.r, cy); ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = '#7B76B8'; ctx.beginPath(); ctx.arc(cx, vy(vi), 2.1, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#A6B5C9'; ctx.beginPath(); ctx.arc(cx, vy(vm), 2.4, 0, Math.PI * 2); ctx.fill();
+      const py = vy(vd);
+      ctx.fillStyle = 'rgba(101, 155, 230, 0.24)'; ctx.beginPath(); ctx.arc(cx, py, 7.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#CFE4FF'; ctx.strokeStyle = '#0B0E14'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(cx, py, 3.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+      const tLbl = '轮次 T' + (Math.round(fIdx) + 1);
+      drawPill(ctx, w, h, tLbl, cx, h - PAD.b + 10);
+      if (tv != null) drawPill(ctx, w, h, tv.toFixed(1) + '%', PAD.l / 2 + 2, cy);
+
+      const tokUsed = vd == null ? '未记录' : Math.round(vd / 100 * pr.win).toLocaleString() + ' tokens';
+      const memLimit = (budgetDetails.long ?? 3000) + (budgetDetails.short ?? 1500);
+      const initLimit = budgetDetails.companion ?? 8000;
+      const memChars = Math.round((vm / 100) * memLimit);
+      const initBudget = Math.round((vi / 100) * initLimit);
+      tip1.innerHTML = `<div class="ft-h"><span>${tLbl}</span><span>三单位不混算</span></div>
+        <div class="ft-r"><span class="ft-k"><i class="leg-l" style="height:2.2px;background:#659BE6"></i>DSH 窗口</span><span class="ft-v">${tokUsed}</span></div>
+        <div class="ft-r"><span class="ft-k"><i class="leg-l" style="height:1.3px;background:#A6B5C9"></i>注入推算</span><span class="ft-v">${memChars} / ${memLimit} 字</span></div>
+        <div class="ft-r"><span class="ft-k"><i class="leg-l" style="height:0.9px;background:#7B76B8"></i>开场推算</span><span class="ft-v">${initBudget} / ${initLimit}</span></div>`;
+      tip1.style.left = ((cx + 210 < w) ? (cx + 14) : (cx - 210)) + 'px';
+      tip1.style.top = Math.max(6, Math.min(h - 86, cy - 34)) + 'px';
+      tip1.classList.add('show');
+    } else { tip1.classList.remove('show'); }
+  }
+
+  // ===== WHITELIST EDITOR & 403 PROBE =====
+  let vacEnabled = true, vacDryRun = false, minToolsVal = null, minToolsDeclared = false;
+  let dshEdited = false, handoverEdited = false;
+  let dshLoaded = { enabled: true, dryRun: false, minTools: null, revisions: {} };
+  const vacPre = document.getElementById('vacPreview');
+  function renderVacPreview() {
+    const slimLine = minToolsDeclared
+      ? `,\n  "cordis.patch.yml[prompt-slim].minTools": ${minToolsVal}`
+      : `,\n  "minTools": null /* 未在 cordis.patch.yml 声明 (插件默认 6) */`;
+    vacPre.textContent = `{\n  "enabled": ${vacEnabled},\n  "dryRun": ${vacDryRun}${slimLine}\n}`;
+  }
+  document.getElementById('tgEnabled').addEventListener('click', function(){
+    dshEdited = true;
+    vacEnabled = !vacEnabled; this.classList.toggle('on', vacEnabled); renderVacPreview();
+  });
+  document.getElementById('tgDry').addEventListener('click', function(){
+    dshEdited = true;
+    vacDryRun = !vacDryRun; this.classList.toggle('on', vacDryRun); renderVacPreview();
+  });
+  const slimInp = document.getElementById('slimInp');
+  function syncSlimUI() {
+    const v = minToolsVal ?? 6;
+    slimInp.value = v;
+    slimInp.disabled = !minToolsDeclared;
+    const pct = ((v - 1) / (64 - 1)) * 100;
+    document.getElementById('slimFill').style.width = pct + '%';
+    document.getElementById('slimThumb').style.left = pct + '%';
+    document.getElementById('slimVal').textContent = minToolsDeclared ? String(v) : '未声明 (默认 6)';
+    renderVacPreview();
+  }
+  slimInp.addEventListener('input', () => {
+    dshEdited = true;
+    minToolsVal = parseInt(slimInp.value, 10);
+    syncSlimUI();
+  });
+  syncSlimUI();
+
+  const PROBES = [
+    { p:'记忆池只读挂载', target:'source', allow:false, code:'只读', msg:'源文件只读' },
+    { p:'沙盒参数允许调整', target:'sandbox', allow:true, code:'沙盒', msg:'参数只在内存中更新' }
+  ];
+  const probeList = document.getElementById('probeList');
+  let selProbe = 0;
+  function renderProbes() {
+    probeList.innerHTML = '';
+    PROBES.forEach((it, idx) => {
+      const div = document.createElement('div');
+      div.className = 'probe-item' + (idx === selProbe ? ' sel' : '');
+      div.innerHTML = `<span class="probe-p">${it.p}</span><span class="badge ${it.allow ? 'ok' : 'err'}">${it.code}</span>`;
+      div.addEventListener('click', async () => {
+        selProbe = idx;
+        renderProbes();
+        const badge = document.getElementById('probeHttp');
+        if (location.protocol.startsWith('http')) {
+          badge.className = 'badge warn';
+          badge.textContent = '检测中…';
+          try {
+            const r = await fetch('/api/dsh/probe', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ target: it.target, field: it.field })
+            });
+            const body = await r.json();
+            const ok = r.ok;
+            badge.className = 'badge ' + (ok ? 'ok' : 'err');
+            badge.textContent = `${r.status} ${ok ? 'ALLOWED' : 'BLOCKED'}`;
+            const msg = ok ? `后端实测 ${r.status} OK：白名单放行 ${it.target}#${it.field}` : `后端实测 ${r.status} Forbidden：${body.error}`;
+            document.getElementById('wlFoot').innerHTML = `<span>${msg}</span><span class="mono" style="color:${ok ? '#64D4B4' : '#F08A95'}">HTTP ${r.status}</span>`;
+            return;
+          } catch (_) {}
+        }
+        badge.className = 'badge ' + (it.allow ? 'ok' : 'err');
+        badge.textContent = it.allow ? '200 ALLOWED' : '403 BLOCKED';
+        document.getElementById('wlFoot').innerHTML = `<span>${it.msg}</span><span class="mono" style="color:${it.allow ? '#64D4B4' : '#F08A95'}">${it.code}</span>`;
+      });
+      probeList.appendChild(div);
+    });
+  }
+  renderProbes();
+
+  document.getElementById('btnWlSave').addEventListener('click', async function() {
+    if (!location.protocol.startsWith('http')) {
+      document.getElementById('wlBadge').textContent = '✓ 本地预览模式 (0 写盘)';
+      return;
+    }
+    const finish = parent.showButtonProgress(this, '保存中…');
+    this.disabled = true;
+    const updates = { 'dsh-session-vacuum/config.json': { enabled: vacEnabled, dryRun: vacDryRun } };
+    if (minToolsDeclared && minToolsVal !== null) {
+      updates['cordis.patch.yml'] = { minTools: minToolsVal };
+    }
+    try {
+      const r = await fetch('/api/dsh', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates, revisions: dshLoaded.revisions })
+      });
+      const res = await r.json();
+      if (!r.ok) {
+        document.getElementById('wlBadge').textContent = `拦截 (${r.status})`;
+        document.getElementById('wlFoot').innerHTML = `<span style="color:#F08A95">⚠ HTTP ${r.status}: ${res.error}</span><span class="mono" style="color:#F08A95">GUARD</span>`;
+        if (r.status === 409) await hydrateDsh();
+        return;
+      }
+      applyDshState({...dshLoaded, ...res});
+      document.getElementById('wlBadge').textContent = LAB.canWrite('dsh') ? '已保存 DSH 配置' : '已应用到沙盒';
+      document.getElementById('wlFoot').textContent = LAB.canWrite('dsh') ? '配置已回读核对' : '沙盒设置已更新';
+    } finally {
+      finish();
+      this.disabled = false;
+    }
+  });
+  document.getElementById('btnWlReset').addEventListener('click', () => {
+    applyDshState(dshLoaded);
+    document.getElementById('wlBadge').textContent = '已恢复实测值';
+  });
+
+  // ===== HANDOVER 120-CHAR HARD CAP + 24H TTL SIMULATOR (Matching handover.py _fit) =====
+  let hoTTL = 4.5, hoIntimate = false, hoTrigger = 'rotate', hoSeq = 4;
+  const hoTopic = document.getElementById('hoTopic');
+  const hoEmo = document.getElementById('hoEmo');
+  const hoPend = document.getElementById('hoPend');
+  const hoTriv = document.getElementById('hoTriv');
+
+  function clipTxt(s, limit) {
+    s = String(s || '').replace(/\s+/g, ' ').trim();
+    if (!s || limit <= 0) return '';
+    return s.length <= limit ? s : (limit > 1 ? s.slice(0, limit - 1) + '…' : '…');
+  }
+  function fitHandover(t, e, p, trArr) {
+    const MAX = 120;
+    let topic = clipTxt(t, 44), emo = clipTxt(e, 24), pend = clipTxt(p, 44), triv = trArr.slice(0, 3).map(x => clipTxt(x, 30)).filter(Boolean);
+    const total = () => topic.length + emo.length + pend.length + triv.join('').length;
+    while (total() > MAX && triv.length > 0) triv.pop();
+    if (total() > MAX && pend.length > 16) pend = clipTxt(pend, Math.max(12, pend.length - (total() - MAX)));
+    if (total() > MAX && topic.length > 16) topic = clipTxt(topic, Math.max(12, topic.length - (total() - MAX)));
+    if (total() > MAX && emo.length > 8) emo = clipTxt(emo, Math.max(4, MAX - (topic.length + pend.length + triv.join('').length)));
+    return { topic, emo, pend, triv, used: total() };
+  }
+
+  function updateHandover() {
+    const rawT = hoTopic.value.trim(), rawE = hoEmo.value.trim(), rawP = hoPend.value.trim();
+    const rawTrArr = hoTriv.value.split(/[、,，;；]/).map(s => s.trim()).filter(Boolean).slice(0, 3);
+    const rawLen = rawT.length + rawE.length + rawP.length + rawTrArr.join('').length;
+
+    document.getElementById('lenTopic').textContent = rawT.length + '字';
+    document.getElementById('lenEmo').textContent = rawE.length + '字';
+    document.getElementById('lenPend').textContent = rawP.length + '字';
+    document.getElementById('lenTriv').textContent = rawTrArr.join('').length + '字';
+
+    const capPct = Math.min(100, (rawLen / 120) * 100);
+    const capFill = document.getElementById('capFill'), capNum = document.getElementById('capNum');
+    capFill.style.width = capPct + '%';
+    capFill.style.background = rawLen > 120 ? '#DFAD64' : '#659BE6';
+    capNum.style.color = rawLen > 120 ? '#E4B56E' : '#94C4FF';
+    capNum.textContent = `${rawLen} / 120 字` + (rawLen > 120 ? ' (已触发_fit裁剪)' : '');
+
+    const expired = hoTTL > 24.0;
+    const ttlBadge = document.getElementById('ttlBadge');
+    ttlBadge.className = 'badge ' + (expired ? 'err' : 'ok');
+    ttlBadge.textContent = expired ? `已流逝 ${hoTTL.toFixed(1)}h > 24h · 过期拦截` : `距写入 ${hoTTL.toFixed(1)}h / TTL 24h · 有效`;
+
+    const fitted = fitHandover(rawT, rawE, rawP, rawTrArr);
+    const injPre = document.getElementById('injectPre');
+    const injStatus = document.getElementById('injStatus');
+
+    if (expired) {
+      injPre.innerHTML = `<span class="ex">[TTL_EXPIRED] written_at + 24h 已过期 (${hoTTL.toFixed(1)}h > 24.0h)</span>\nhandover.read_handover() -> None\n# 超过 24 小时不再注入上轮交接单，保持新会话纯净上下文。`;
+      injStatus.className = 'badge err'; injStatus.textContent = 'read_handover() -> None (已过期)';
+      document.getElementById('mFitChars').textContent = '0 / 120 字';
+      document.getElementById('mTotChars').textContent = '0 / 168 字符';
+      return;
+    }
+
+    const lines = [
+      `正在聊：${fitted.topic || '—'}`,
+      `情绪：${fitted.emo || '—'}`,
+      `待续：${fitted.pend || '—'}`,
+      `细节：${fitted.triv.join('；') || '—'}`
+    ];
+    const bodyStr = lines.join('\n');
+    const fullStr = `<!--MEM_START-->\n[上次交接单 · trigger=${hoTrigger} · intimate=${hoIntimate}]\n${bodyStr}\n<!--MEM_END-->`;
+    injPre.innerHTML = `<span class="mk">&lt;!--MEM_START--&gt;</span>\n<span class="hd">[上次交接单 · trigger=${hoTrigger} · intimate=${hoIntimate}]</span>\n${bodyStr.replace(/</g,'&lt;')}\n<span class="mk">&lt;!--MEM_END--&gt;</span>`;
+    const over168 = fullStr.length > 168;
+    injStatus.className = 'badge ' + (over168 ? 'warn' : 'ok');
+    injStatus.textContent = `INJECT_MAX_CHARS = 168 · ${over168 ? '触发外层截断' : 'OK'}`;
+    document.getElementById('mFitChars').textContent = `${fitted.used} / 120 字`;
+    document.getElementById('mTotChars').textContent = `${fullStr.length} / 168 字符`;
+  }
+
+  let hoRev = null, previewTimer = null;
+  function handoverPayload() {
+    return {
+      topic: hoTopic.value.trim(),
+      emotion: hoEmo.value.trim(),
+      pending_tail: hoPend.value.trim(),
+      trivia: hoTriv.value.split(/[、,，;；]/).map(s => s.trim()).filter(Boolean).slice(0, 3),
+      age_hours: hoTTL,
+      trigger: hoTrigger,
+      is_intimate: hoIntimate,
+      revision: hoRev,
+    };
+  }
+  async function syncServerPreview() {
+    if (!location.protocol.startsWith('http')) return;
+    try {
+      const r = await fetch('/api/handover/preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(handoverPayload())
+      });
+      if (!r.ok) return;
+      const pv = await r.json();
+      const injPre = document.getElementById('injectPre');
+      const injStatus = document.getElementById('injStatus');
+      if (pv.state === 'expired') {
+        injPre.innerHTML = `<span class="ex">[TTL_EXPIRED] written_at + ${pv.ttl}h 已过期 (${hoTTL.toFixed(1)}h &gt; ${pv.ttl}.0h)</span>\nhandover.read_latest_handover() -&gt; None`;
+        injStatus.className = 'badge err'; injStatus.textContent = 'read_latest_handover() -> None (已过期)';
+        document.getElementById('mFitChars').textContent = '0 / ' + pv.cap + ' 字';
+        document.getElementById('mTotChars').textContent = '0 / ' + pv.body_cap + ' 字符';
+      } else if (pv.state === 'protected' || !pv.marker) {
+        injPre.innerHTML = `<span class="ex">[INTIMATE_REDACTED] is_intimate=true · 禁止注入明文交接块</span>\nhandover.read_latest_handover() -&gt; None`;
+        injStatus.className = 'badge warn'; injStatus.textContent = 'is_intimate=true · 已脱敏拦截';
+        document.getElementById('mFitChars').textContent = `${pv.used} / ${pv.cap} 字`;
+        document.getElementById('mTotChars').textContent = `0 / ${pv.body_cap} 字符`;
+      } else {
+        const escaped = String(pv.marker).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        injPre.innerHTML = escaped
+          .replace('&lt;!--MEM_START--&gt;', '<span class="mk">&lt;!--MEM_START--&gt;</span>')
+          .replace('&lt;!--MEM_END--&gt;', '<span class="mk">&lt;!--MEM_END--&gt;</span>');
+        const over = pv.body_chars > pv.body_cap;
+        injStatus.className = 'badge ' + (over ? 'warn' : 'ok');
+        injStatus.textContent = `INJECT_MAX_CHARS = ${pv.body_cap} · ${over ? '触发外层截断' : 'OK'}`;
+        document.getElementById('mFitChars').textContent = `${pv.used} / ${pv.cap} 字`;
+        document.getElementById('mTotChars').textContent = `${pv.body_chars} / ${pv.body_cap} 字符`;
+      }
+    } catch (_) {}
+  }
+  function scheduleServerPreview() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(syncServerPreview, 65);
+  }
+
+  [hoTopic, hoEmo, hoPend, hoTriv].forEach(el => el.addEventListener('input', () => { handoverEdited = true; updateHandover(); scheduleServerPreview(); }));
+  const ttlInp = document.getElementById('ttlInp');
+  ttlInp.addEventListener('input', () => {
+    hoTTL = parseFloat(ttlInp.value);
+    const pct = (hoTTL / 30) * 100;
+    document.getElementById('ttlFill').style.width = pct + '%';
+    document.getElementById('ttlThumb').style.left = pct + '%';
+    document.getElementById('ttlVal').textContent = hoTTL.toFixed(1) + ' h';
+    updateHandover();
+    scheduleServerPreview();
+  });
+  document.querySelectorAll('#trigChips .mini-chip[data-t]').forEach(ch => ch.addEventListener('click', () => {
+    document.querySelectorAll('#trigChips .mini-chip[data-t]').forEach(x => x.classList.remove('on'));
+    handoverEdited = true;
+    ch.classList.add('on'); hoTrigger = ch.dataset.t; updateHandover(); scheduleServerPreview();
+  }));
+  document.getElementById('btnIntimate').addEventListener('click', function(){
+    hoIntimate = !hoIntimate; this.classList.toggle('on', hoIntimate);
+    this.textContent = 'is_intimate: ' + hoIntimate; updateHandover(); scheduleServerPreview();
+  });
+  document.getElementById('btnHoSave').addEventListener('click', async function() {
+    if (!location.protocol.startsWith('http')) {
+      hoSeq += 1;
+      document.getElementById('hoFoot').innerHTML = `<span style="color:#64D4B4">✓ 本地预览模式 (seq #${hoSeq})</span><span class="mono" style="color:#64D4B4">PREVIEW</span>`;
+      return;
+    }
+    const finish = parent.showButtonProgress(this, '保存中…');
+    this.disabled = true;
+    try {
+      const r = await fetch('/api/handover', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(handoverPayload())
+      });
+      const res = await r.json();
+      if (!r.ok) {
+        document.getElementById('hoFoot').innerHTML = `<span style="color:#F08A95">⚠ HTTP ${r.status}: ${res.error}</span><span class="mono" style="color:#F08A95">REJECTED</span>`;
+        if (r.status === 409) await hydrateHandover();
+        return;
+      }
+      hoRev = res.revision;
+      if (LAB.canWrite('handover')) handoverEdited = false;
+      hoSeq = res.seq || (hoSeq + 1);
+      const tag = res.protected ? '已加密隐私保护' : `seq #${hoSeq}`;
+      document.getElementById('hoFoot').innerHTML = `<span style="color:#64D4B4">${res.written ? '已保存交接单' : '已加入本次会话沙盒'}</span><span class="mono" style="color:#64D4B4">${tag}</span>`;
+    } finally {
+      finish();
+      this.disabled = false;
+    }
+  });
+  document.getElementById('btnHoReset').addEventListener('click', () => {
+    hoTopic.value = '';
+    hoEmo.value = '';
+    hoPend.value = '';
+    hoTriv.value = '';
+    hoTTL = 4.5; ttlInp.value = 4.5; ttlInp.dispatchEvent(new Event('input'));
+    hoIntimate = false; document.getElementById('btnIntimate').classList.remove('on'); document.getElementById('btnIntimate').textContent = 'is_intimate: false';
+    updateHandover();
+    scheduleServerPreview();
+  });
+  updateHandover();
+
+  function applyDshState(d) {
+    dshEdited = false;
+    dshLoaded = d;
+    vacEnabled = d.enabled !== false;
+    vacDryRun = Boolean(d.dryRun);
+    minToolsDeclared = d.minTools !== null && d.minTools !== undefined;
+    minToolsVal = minToolsDeclared ? Number(d.minTools) : null;
+    document.getElementById('tgEnabled').classList.toggle('on', vacEnabled);
+    document.getElementById('tgDry').classList.toggle('on', vacDryRun);
+    syncSlimUI();
+  }
+  async function hydrateDsh() {
+    const r = await fetch('/api/dsh', { cache: 'no-store' });
+    if (r.ok && !dshEdited) applyDshState(await r.json());
+  }
+  async function hydrateHandover() {
+    const r = await fetch('/api/handover', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    hoRev = d.revision;
+    if (handoverEdited) return;
+    if (d.record) {
+      hoTopic.value = d.record.topic || '';
+      hoEmo.value = d.record.emotion || '';
+      hoPend.value = d.record.pending_tail || '';
+      hoTriv.value = (d.record.trivia || []).join('、');
+      if (d.record.trigger) {
+        hoTrigger = d.record.trigger;
+        document.querySelectorAll('#trigChips .mini-chip[data-t]').forEach(x => x.classList.toggle('on', x.dataset.t === hoTrigger));
+      }
+      if (d.record.age_hours != null) {
+        ttlInp.value = d.record.age_hours;
+        hoTTL = Number(ttlInp.value);
+      }
+      if (d.record.seq) hoSeq = d.record.seq;
+      document.getElementById('hoFoot').innerHTML = `<span>已加载交接记录</span><span class="mono" style="color:#64D4B4">seq #${hoSeq}</span>`;
+    } else {
+      [hoTopic, hoEmo, hoPend, hoTriv].forEach(el => { el.value = ''; });
+      ttlInp.value = hoTTL = 0;
+      hoSeq = 0;
+      hoTrigger = 'rotate';
+      document.querySelectorAll('#trigChips .mini-chip[data-t]').forEach(x => x.classList.toggle('on', x.dataset.t === hoTrigger));
+      document.getElementById('hoFoot').textContent = '暂无可显示的交接记录';
+    }
+    updateHandover();
+    syncServerPreview();
+  }
+  let budgetDetails = {};
+  function renderBudgetSummary(pr) {
+    const b = budgetDetails;
+    if (hov1.pinned && pr.dshPct[hov1.idx] == null) {
+      hov1.idx = Math.max(0, pr.dshPct.findLastIndex(value => value != null));
+    }
+    document.getElementById('c1Title').textContent = '三套预算单位严格分离走势 · ' + pr.label;
+    const tokenText = pr.curTok?.toLocaleString() ?? '未提供';
+    document.getElementById('u1Val').textContent = pr.win ? tokenText + ' / ' + pr.win.toLocaleString() : tokenText;
+    document.getElementById('u1Sub').textContent = LAB.demo ? '合成演示' :
+      pr.curTok === null ? '该配置暂无实测 token' : 'DSH 实测 · vacuum ' + (b.vac_logs ?? '—') + ' 条清理日志';
+    document.getElementById('u1Fill').style.width = Math.min(100, (pr.curTok / Math.max(1, pr.win)) * 100).toFixed(2) + '%';
+  }
+  async function hydrateM5Telemetry() {
+    const r = await fetch('/api/telemetry', { cache: 'no-store' });
+    if (!r.ok) return;
+    budgetDetails = (await r.json()).budgets || {};
+    const b = budgetDetails;
+    for (const [key, profile] of Object.entries(parent.labRuntime.profiles)) {
+      const pr = PROFS[key];
+      Object.assign(pr, profile);
+      const srv = b.profiles?.[key];
+      if (srv) {
+        const win = srv.window ?? srv.windows?.[0] ?? null;
+        const samples = srv.samples || [];
+        pr.win = win;
+        pr.curTok = samples.at(-1) ?? null;
+        pr.dshPct = Array(24 - samples.length).fill(null).concat(samples.map(tok => win ? tok / win * 100 : null));
+        pr.label = key + ' · ' + srv.files + ' 个会话档';
+        if (srv.latest_kb != null) pr.label += ' (' + srv.latest_kb + ' KB)';
+      }
+      document.getElementById('pill_' + key).textContent = pr.label;
+    }
+    renderBudgetSummary(PROFS[curProf]);
+    const long = b.long ?? 3000, short = b.short ?? 1500, init = b.companion ?? 8000, compact = b.compact ?? 1500;
+    document.getElementById('u2Val').textContent = long.toLocaleString() + ' + ' + short.toLocaleString() + ' 字';
+    document.getElementById('u2Sub').textContent = b.long == null ? '长期与短期沙盒预算' : '记忆库参数 · 长期与短期字符预算';
+    document.getElementById('u3Val').textContent = init.toLocaleString() + ' / 紧凑 ' + compact.toLocaleString();
+    document.getElementById('u3Sub').textContent = b.companion == null ? '新会话沙盒预算' : '记忆库参数 · 新会话预算';
+  }
+  const syncUndo = parent.bindModuleUndo(document.getElementById('btnModuleUndo'),
+    document.getElementById('moduleUndoStatus'), 'm5', 'handover');
+  window.refreshData = (undoneAction) => {
+    syncUndo();
+    if (undoneAction === 'dsh') dshEdited = false;
+    if (undoneAction === 'handover') handoverEdited = false;
+    if (LAB.canWrite('dsh')) document.getElementById('btnWlSave').textContent = '保存 DSH 配置';
+    if (LAB.canWrite('handover')) document.getElementById('btnHoSave').textContent = '保存交接单';
+    hydrateDsh().catch(() => {});
+    hydrateHandover().catch(() => {});
+    hydrateM5Telemetry().catch(() => {});
+  };
+  window.refreshData();
+
+  const current = PROFS.desktop;
+  document.getElementById('u1Val').textContent = current.curTok === null ? '未提供 tokens' : current.curTok.toLocaleString() + ' / ' + current.win.toLocaleString();
+  document.getElementById('u1Sub').textContent = LAB.demo ? '合成演示' : '源数据未提供 token 计数';
+  document.getElementById('u2Val').textContent = '3,000 + 1,500 字';
+  document.getElementById('u2Sub').textContent = '长期与短期沙盒预算';
+  document.getElementById('u3Val').textContent = '8,000 / 紧凑 1,500 字';
+  document.getElementById('u3Sub').textContent = '新会话沙盒预算';
+  for (const key of Object.keys(PROFS)) document.getElementById('pill_' + key).textContent = PROFS[key].label;
+  // Topbar events
+  document.querySelectorAll('#profPills .pill').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#profPills .pill').forEach(x => x.classList.remove('active'));
+    b.classList.add('active'); curProf = b.dataset.p;
+    renderBudgetSummary(PROFS[curProf]);
+  }));
+  document.getElementById('btnSnap').addEventListener('click', function(){
+    snapMode = !snapMode; this.innerHTML = '<i></i> 悬停 X/Y 准星：' + (snapMode ? '磁吸曲线' : '自由光标');
+  });
+  box1.addEventListener('mousemove', e => { const r=box1.getBoundingClientRect(); hov1={active:true,x:e.clientX-r.left,y:e.clientY-r.top,idx:11,pinned:false}; });
+  box1.addEventListener('mouseleave', () => { hov1.active = false; });
+
+  function loop(ts) { drawBudget(ts * 0.001); requestAnimationFrame(loop); }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

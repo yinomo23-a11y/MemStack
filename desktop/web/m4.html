@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MEMORY LAB · 模块 04 三轨情绪与衰减调参实验室（精修版）</title>
+<style>
+  :root {
+    --bg: #05070B;
+    --card: #0A0E16;
+    --card-in: #0E1420;
+    --border: rgba(154, 182, 222, 0.11);
+    --border-hi: rgba(110, 172, 250, 0.45);
+    --text: #ECF2FA;
+    --muted: #7B8EA8;
+    --dim: #506178;
+    --blue: #659BE6;
+    --blue-hi: #94C4FF;
+    --silver: #A8B8CE;
+    --violet: #8880CE;
+    --teal: #52C8A8;
+    --amber: #DFAD64;
+    --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: radial-gradient(circle at 24% -10%, rgba(56, 98, 168, 0.14), transparent 48%), var(--bg);
+    color: var(--text); font-family: var(--sans); font-size: 11.5px; user-select: none;
+  }
+  .app { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* Sleek Top Instrument Header */
+  .top {
+    height: 48px; flex-shrink: 0;
+    background: rgba(7, 10, 16, 0.88);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; gap: 12px; backdrop-filter: blur(12px);
+  }
+  .top-l { display: flex; align-items: center; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .orb { width: 8px; height: 8px; border-radius: 50%; background: var(--blue-hi); box-shadow: 0 0 12px var(--blue); }
+  .b-title { font-family: var(--mono); font-size: 12.5px; font-weight: 700; letter-spacing: 1.2px; color: #F4F8FF; }
+  .pill-bar {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: #0B1019; border: 1px solid rgba(154,182,222,0.14);
+    border-radius: 999px; padding: 3px;
+  }
+  .pill {
+    background: transparent; border: 1px solid transparent; color: var(--muted);
+    font-size: 11px; padding: 3.5px 11px; border-radius: 999px; cursor: pointer;
+    transition: all .14s ease; font-family: inherit;
+  }
+  .pill:hover { color: #E5EEF9; }
+  .pill.active {
+    background: rgba(101, 155, 230, 0.20);
+    border-color: rgba(130, 188, 255, 0.42);
+    color: #F5F9FF; font-weight: 600;
+  }
+
+  .top-r { display: flex; align-items: center; gap: 8px; }
+  .accent-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(101, 155, 230, 0.11); border: 1px solid rgba(118, 178, 250, 0.38);
+    color: #9EC8FF; border-radius: 999px; padding: 4px 11px; font-size: 11px;
+    cursor: pointer; font-family: inherit; transition: all .14s;
+  }
+  .accent-pill:hover { background: rgba(101, 155, 230, 0.20); color: #FFF; }
+  .accent-pill i { width: 5.5px; height: 5.5px; border-radius: 50%; background: var(--blue-hi); box-shadow: 0 0 7px var(--blue-hi); }
+  .ro-pill {
+    font-family: var(--mono); font-size: 10px; color: #62D2B2;
+    padding: 4px 10px; border-radius: 999px;
+    background: rgba(82, 200, 168, 0.09); border: 1px solid rgba(82, 200, 168, 0.28);
+  }
+
+  /* Main Balanced 2-Column Layout */
+  .main-grid {
+    flex: 1; display: grid;
+    grid-template-columns: 1.38fr 1fr;
+    gap: 12px; padding: 11px 15px 13px; overflow: hidden;
+  }
+  .col-stack { display: flex; flex-direction: column; gap: 11px; overflow: hidden; }
+
+  .card {
+    background: linear-gradient(180deg, rgba(16, 22, 34, 0.72) 0%, rgba(10, 14, 22, 0.90) 100%);
+    border: 1px solid var(--border);
+    border-radius: 13px; padding: 11px 14px;
+    display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+  .c-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; margin-bottom: 6px; flex-shrink: 0;
+    height: 22px; min-height: 22px; max-height: 22px; overflow: hidden;
+  }
+  .c-title-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
+  .c-title { font-size: 12.5px; font-weight: 600; color: #F1F6FD; letter-spacing: 0.2px; white-space: nowrap; }
+  .c-sub { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge {
+    font-family: var(--mono); font-size: 9.5px; padding: 1.5px 7px; border-radius: 5px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .badge.warn { color: #E4B56E; background: rgba(223,173,100,0.11); border: 1px solid rgba(223,173,100,0.32); }
+  .badge.ok { color: #64D4B4; background: rgba(82,200,168,0.10); border: 1px solid rgba(82,200,168,0.28); }
+  .badge.blue { color: #96C4FF; background: rgba(101,155,230,0.13); border: 1px solid rgba(118,178,250,0.34); }
+
+  .legend { display: flex; gap: 13px; font-size: 10.5px; color: #96A8C2; align-items: center; white-space: nowrap; flex-shrink: 0; }
+  .leg-i { display: inline-flex; align-items: center; gap: 5px; }
+  .leg-l { display: inline-block; width: 12px; border-radius: 2px; }
+
+  /* Interactive XY Curve Stage + Reference Dual-Handle Scrubber */
+  .xy-stage { flex: 1; position: relative; min-height: 120px; cursor: crosshair; overflow: hidden; }
+  .xy-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .scrubber {
+    height: 14px; display: flex; align-items: center; position: relative;
+    margin: 4px 14px 2px 42px; flex-shrink: 0;
+  }
+  .scrub-track {
+    width: 100%; height: 4px; border-radius: 99px; background: #141C2B; overflow: hidden;
+  }
+  .scrub-fill {
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, rgba(101,155,230,0.10), rgba(101,155,230,0.42), rgba(136,128,206,0.20));
+  }
+  .scrub-handle {
+    position: absolute; top: 50%; width: 11px; height: 11px; border-radius: 50%;
+    background: #0B1019; border: 1.5px solid #7D93B2; transform: translate(-50%, -50%);
+  }
+  .scrub-handle.l { left: 0%; }
+  .scrub-handle.r { left: 100%; }
+
+  /* Floating Readout HUD */
+  .ftip {
+    position: absolute; pointer-events: none; z-index: 12; display: none;
+    background: rgba(8, 12, 20, 0.95); border: 1px solid rgba(120, 182, 255, 0.45);
+    border-radius: 9px; padding: 7px 10px; font-size: 10.5px; color: var(--text);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.72); min-width: 170px; backdrop-filter: blur(8px);
+  }
+  .ftip.show { display: block; }
+  .ft-h {
+    display: flex; justify-content: space-between; gap: 10px;
+    font-family: var(--mono); font-size: 9.5px; color: var(--blue-hi);
+    padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid rgba(154,182,222,0.12);
+  }
+  .ft-r { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 2.5px; }
+  .ft-k { color: #8FA2BC; display: inline-flex; align-items: center; gap: 5px; }
+  .ft-v { font-family: var(--mono); font-weight: 600; color: #F4F8FF; }
+
+  .card-foot {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-top: 6px; margin-top: 4px; border-top: 1px solid rgba(154,182,222,0.08);
+    font-size: 10.2px; color: var(--muted); flex-shrink: 0;
+    height: 22px; min-height: 22px; max-height: 22px; white-space: nowrap; overflow: hidden;
+  }
+
+  /* Bottom-Left Integrated Wide Real Audit Curve + Vertical Compact Heatmap */
+  .audit-split {
+    flex: 1; display: grid; grid-template-columns: 1fr 154px; gap: 12px; min-height: 0; overflow: hidden;
+  }
+  .hm-side {
+    display: flex; flex-direction: column; justify-content: space-between;
+    border-left: 1px solid rgba(154,182,222,0.09); padding-left: 12px;
+    min-height: 0; overflow: hidden;
+  }
+  .hm-top-wrap {
+    flex: 1; display: flex; flex-direction: column; min-height: 0;
+  }
+  .hm-head { display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #9BB0CA; margin-bottom: 5px; flex-shrink: 0; }
+  .hm-leg { display: flex; align-items: center; gap: 2.5px; font-size: 9px; color: var(--muted); }
+  .hm-leg i { width: 7.5px; height: 7.5px; border-radius: 2px; display: inline-block; }
+  .hm-mat {
+    flex: 1; min-height: 0;
+    display: grid; grid-template-columns: repeat(9, 1fr); gap: 2.5px;
+  }
+  .hm-cell { border-radius: 2px; cursor: pointer; transition: transform .1s; min-height: 0; }
+  .hm-cell:hover { transform: scale(1.22); outline: 1px solid var(--blue-hi); z-index: 2; }
+  .metrics-4 {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 8px;
+    padding-top: 6px; margin-top: 6px; border-top: 1px solid rgba(154,182,222,0.09);
+    flex-shrink: 0;
+  }
+  .m4-k { font-size: 9.2px; color: var(--muted); }
+  .m4-v { font-size: 12px; font-weight: 700; color: #F0F6FF; line-height: 1.2; font-variant-numeric: tabular-nums; }
+
+  /* Right Top: Custom Precision Parameter Sliders (NO ugly browser range inputs!) */
+  .p-groups { flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 6px; }
+  .p-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; }
+  .p-card {
+    background: rgba(14, 20, 32, 0.72);
+    border: 1px solid rgba(154, 182, 222, 0.10);
+    border-radius: 8px; padding: 7px 10px 8px;
+    display: flex; flex-direction: column; gap: 4px;
+    transition: border-color .14s, background .14s;
+  }
+  .p-card:hover { border-color: rgba(118, 178, 250, 0.34); background: rgba(18, 26, 42, 0.85); }
+  .p-card.changed { border-color: rgba(118, 178, 250, 0.50); }
+  .p-top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+  .p-name { font-size: 11.2px; font-weight: 600; color: #EEF4FC; }
+  .p-val { font-family: var(--mono); font-size: 11.2px; font-weight: 700; color: var(--blue-hi); }
+  .p-meta { display: flex; justify-content: space-between; align-items: center; font-size: 9.6px; color: #6F839F; }
+  .p-var { font-family: var(--mono); font-size: 8.8px; color: #8196B4; background: rgba(154,182,222,0.06); padding: 0.5px 4px; border-radius: 3px; }
+
+  /* Custom Instrument Slider Widget */
+  .c-slider {
+    position: relative; height: 14px; display: flex; align-items: center; cursor: pointer; margin-top: 1px;
+  }
+  .cs-track {
+    position: relative; width: 100%; height: 4.5px; border-radius: 99px;
+    background: #151E2E; overflow: visible;
+  }
+  .cs-fill {
+    position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px;
+    background: linear-gradient(90deg, #3D6DB4, #7AB4FF);
+  }
+  .cs-def {
+    position: absolute; top: -2px; width: 1.5px; height: 8.5px;
+    background: rgba(255, 255, 255, 0.35); transform: translateX(-50%);
+    pointer-events: none;
+  }
+  .cs-thumb {
+    position: absolute; top: 50%; width: 11.5px; height: 11.5px; border-radius: 50%;
+    background: #0B111C; border: 2px solid #96C6FF;
+    box-shadow: 0 0 8px rgba(101, 155, 230, 0.65);
+    transform: translate(-50%, -50%); transition: transform .08s;
+  }
+  .c-slider:hover .cs-thumb { transform: translate(-50%, -50%) scale(1.16); border-color: #FFF; }
+  .c-slider input {
+    position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0;
+  }
+
+  .act-row { display: flex; gap: 8px; margin-top: 2px; flex-shrink: 0; }
+  .btn {
+    background: #101726; border: 1px solid rgba(154,182,222,0.22); color: #D2E3F8;
+    font-size: 11px; padding: 5.5px 12px; border-radius: 7px; cursor: pointer; font-family: inherit; transition: all .14s;
+  }
+  .btn:hover { background: #18243A; border-color: rgba(130,188,255,0.58); color: #FFF; }
+  .btn.pri {
+    flex: 1; background: linear-gradient(90deg, rgba(72,126,204,0.28), rgba(101,155,230,0.22));
+    border-color: rgba(130,188,255,0.52); color: #D4E8FF; font-weight: 600;
+  }
+  .btn.pri:hover { background: linear-gradient(90deg, rgba(72,126,204,0.42), rgba(101,155,230,0.34)); }
+
+  /* Right Bottom: Stacked Hybrid Rerank Table + Mood Telemetry */
+  .rr-list { display: flex; flex-direction: column; gap: 5px; flex: 1; justify-content: center; }
+  .rr-row {
+    display: grid; grid-template-columns: 24px 1.25fr 1.15fr 52px 38px;
+    align-items: center; gap: 8px;
+    padding: 5.5px 8px; border-radius: 7px;
+    background: rgba(14, 20, 32, 0.62); border: 1px solid rgba(154,182,222,0.08);
+  }
+  .rr-rank { font-family: var(--mono); font-size: 10.5px; color: #7E92AE; font-weight: 600; }
+  .rr-title { font-size: 11px; color: #EBF3FD; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rr-sub { font-family: var(--mono); font-size: 9px; color: #6E829E; margin-left: 5px; }
+  .rr-bars { display: flex; flex-direction: column; gap: 2.5px; }
+  .rr-stack { height: 5.5px; border-radius: 99px; background: #141D2C; overflow: hidden; display: flex; gap: 1px; }
+  .rr-legend-mini { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 8.6px; color: #6E829E; }
+  .rr-tot { font-family: var(--mono); font-size: 11.2px; font-weight: 700; color: var(--blue-hi); text-align: right; }
+  .rr-mv { text-align: right; }
+
+  .mood-box {
+    margin-top: 6px; padding: 7px 10px; border-radius: 8px;
+    background: rgba(13, 18, 29, 0.78); border: 1px solid rgba(154,182,222,0.10);
+    flex-shrink: 0;
+  }
+  .mood-bars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 4px; font-size: 10px; }
+  .m-track { height: 4.5px; border-radius: 99px; background: #151E2E; overflow: hidden; margin-top: 3px; }
+  .m-fill { height: 100%; border-radius: 99px; }
+</style>
+<link rel="stylesheet" href="button-feedback.css">
+</head>
+<body>
+<div class="app">
+  <!-- TOP HEADER -->
+  <header class="top">
+    <div class="top-l">
+      <div class="brand">
+        <i class="orb"></i>
+        <span class="b-title">MEMORY LAB // 04</span>
+      </div>
+      <div class="pill-bar" id="samplePills">
+        <button class="pill active" data-s="0">核心人物 (地板 45)</button>
+        <button class="pill" data-s="1">亲密专池 (地板 55)</button>
+        <button class="pill" data-s="2">情景故事档 (0.8/天)</button>
+        <button class="pill" data-s="3">短期 3 天平方衰减</button>
+        <button class="pill" data-s="4">冷存 180 天冻结</button>
+      </div>
+    </div>
+    <div class="top-r">
+      <button class="accent-pill" id="btnSnap"><i></i> 悬停 X/Y 准星：磁吸曲线</button>
+      <span class="ro-pill">SHA-256 只读仿真</span>
+    </div>
+  </header>
+
+  <!-- MAIN 2-COLUMN INSTRUMENT WORKSPACE -->
+  <main class="main-grid">
+    <!-- LEFT COLUMN: Two Interactive X/Y Curve Stages -->
+    <div class="col-stack">
+      <!-- Card 1: 3-Track Emotion & Decay Projection -->
+      <section class="card" style="flex:1.18">
+        <div class="c-head">
+          <div class="c-title-wrap">
+            <span class="c-title" id="c1Title">单条记忆三轨衰减与沙盒推演</span>
+            <span class="badge warn">IMPRESSION_SUPPLEMENT=False</span>
+          </div>
+          <div class="legend">
+            <span class="leg-i"><i class="leg-l" style="height:2.2px;background:#659BE6"></i>主轨 · 细节清晰度 1.75px</span>
+            <span class="leg-i"><i class="leg-l" style="height:1.3px;background:#A6B5C9"></i>次轨 · 核心印象 1.1px</span>
+            <span class="leg-i"><i class="leg-l" style="height:0.9px;background:#7B76B8"></i>余温 · 情绪余温 0.85px</span>
+          </div>
+        </div>
+        <div class="xy-stage" id="box1">
+          <canvas id="cv1"></canvas>
+          <div class="ftip" id="tip1"></div>
+        </div>
+        <div class="scrubber">
+          <div class="scrub-track"><div class="scrub-fill"></div></div>
+          <div class="scrub-handle l"></div>
+          <div class="scrub-handle r"></div>
+        </div>
+        <div class="card-foot">
+          <span id="frozenInfo">—</span>
+          <span class="mono" style="color:var(--blue-hi)" id="floorReadout">—</span>
+        </div>
+      </section>
+
+      <!-- Card 2: Real 7,378 Recall Audit X/Y Curve + Reference Activity Heatmap + 4 Metrics -->
+      <section class="card" style="flex:0.95">
+        <div class="c-head">
+          <div class="c-title-wrap">
+            <span class="c-title">真实召回活跃度 · state\recall_audit.jsonl</span>
+            <span class="c-sub" id="auditSub">—</span>
+          </div>
+          <span class="badge blue" id="hmHoverOut">—</span>
+        </div>
+        <div class="audit-split">
+          <div class="xy-stage" id="box2" style="min-height:120px">
+            <canvas id="cv2"></canvas>
+            <div class="ftip" id="tip2"></div>
+          </div>
+          <div class="hm-side">
+            <div class="hm-top-wrap">
+              <div class="hm-head">
+                <span>日热力</span>
+                <div class="hm-leg">
+                  <span>少</span>
+                  <i style="background:#131B28"></i>
+                  <i style="background:#1E3352"></i>
+                  <i style="background:#2E548A"></i>
+                  <i style="background:#487CC6"></i>
+                  <i style="background:#84BAFF"></i>
+                  <span>多</span>
+                </div>
+              </div>
+              <div class="hm-mat" id="hmMat"></div>
+            </div>
+            <div class="metrics-4">
+              <div><div class="m4-k">实测活跃天</div><div class="m4-v" id="m4Obs">—</div></div>
+              <div><div class="m4-k">最长连续</div><div class="m4-v" id="m4Long">—</div></div>
+              <div><div class="m4-k">最忙一天</div><div class="m4-v" id="m4Peak">—</div></div>
+              <div><div class="m4-k">实测日均</div><div class="m4-v" id="m4Avg">—</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- RIGHT COLUMN: Custom Precision Parameter Sandbox + Stacked Hybrid Rerank Table -->
+    <div class="col-stack">
+      <!-- Card 3: 8 Custom Precision Sliders -->
+      <section class="card" style="flex:1.12">
+        <div class="c-head">
+          <div class="c-title-wrap">
+            <span class="c-title">记忆衰减与重排参数调优沙盒</span>
+            <span class="c-sub">白线刻痕为默认值 · 拖动实时推演曲线与排名</span>
+          </div>
+          <span class="badge ok" id="simBadge">内存仿真 · 0 写盘</span>
+        </div>
+
+        <div class="p-groups">
+          <div class="p-grid" id="paramGrid"></div>
+
+          <div class="act-row">
+            <button class="btn pri" id="btnApply">应用到本地沙盒</button>
+            <button class="btn" id="btnModuleUndo" hidden disabled>回滚本页</button>
+            <span id="moduleUndoStatus" role="status" hidden></span>
+            <button class="btn" id="btnReset">恢复默认参数</button>
+          </div>
+        </div>
+
+        <div class="card-foot" id="overrideOut">
+          <span>参数只在当前沙盒生效</span>
+          <span class="mono" style="color:#64D4B4">误差校验 ≤ 1e-6</span>
+        </div>
+      </section>
+
+      <!-- Card 4: Stacked Hybrid Rerank Top-5 + mood.py 3-Axis -->
+      <section class="card" style="flex:1.01;justify-content:space-between">
+        <div style="display:flex;flex-direction:column;flex:1;justify-content:space-between">
+          <div class="c-head" style="margin-bottom:4px">
+            <div class="c-title-wrap">
+              <span class="c-title">同题召回 Top-5 实时重排对比</span>
+              <span class="c-sub">以当前快照计算重排示例</span>
+            </div>
+            <span class="mono" style="font-size:9.5px;color:var(--blue-hi);white-space:nowrap;flex-shrink:0" id="formulaTag">0.80·语义 + 0.15·强度 + 0.05·情绪</span>
+          </div>
+
+          <div class="rr-list" id="rrList"></div>
+        </div>
+
+        <div class="mood-box">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:10.8px;font-weight:600;color:#DCE7F7">原版三轴情绪图</span>
+            <span class="badge warn">原始情绪数据缺测</span>
+          </div>
+          <div class="mood-bars">
+            <div>
+              <div style="display:flex;justify-content:space-between"><span>亲近感 affection</span><span class="mono" style="color:#94C4FF">—</span></div>
+              <div class="m-track"><div class="m-fill" style="width:0%;background:#659BE6"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between"><span>任务专注 task</span><span class="mono" style="color:#64D4B4">—</span></div>
+              <div class="m-track"><div class="m-fill" style="width:0%;background:#52C8A8"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between"><span>平静基线 neutral</span><span class="mono" style="color:#A8B8CE">—</span></div>
+              <div class="m-track"><div class="m-fill" style="width:0%;background:#8D9EB4"></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script src="gemini-data.js"></script>
+<script>
+(function(){
+  let LAB = window.parent.labRuntime;
+  const fetch = (...args) => parent.labRuntime.request(...args);
+  const escapeHtml = window.parent.escapeHtml;
+
+  const DPR = Math.min(2, window.devicePixelRatio || 1);
+  let snapMode = true, curSample = 0;
+
+  // ===== 8 CLEAR HUMAN-NAMED PARAMETERS WITH CUSTOM PRECISION SLIDER RENDERING =====
+  const PARAMS = [
+    { id:'d2',  cn:'长期记忆日衰减速度', desc:'每天自然掉多少分（越大忘越快）', code:'DECAY_RATE_MAP[2]', min:1.0, max:12.0, step:0.5, def:5.0, val:5.0, fmt:v=>v.toFixed(1)+' 分/天' },
+    { id:'ep',  cn:'情景故事日衰减速度', desc:'多轮完整故事档慢速衰减率',       code:'EPISODE_DECAY_RATE', min:0.2, max:3.0,  step:0.1, def:0.8, val:0.8, fmt:v=>v.toFixed(2)+' 分/天' },
+    { id:'erd', cn:'情绪余温日消退速度', desc:'情绪余温轨每日消退（保底留25%）', code:'EMOTION_RESIDUE_DECAY', min:0.1, max:1.6, step:0.05, def:0.50, val:0.50, fmt:v=>v.toFixed(2)+' 分/天' },
+    { id:'epf', cn:'高情绪防遗忘保护系数',desc:'情绪≥60时衰减乘该值（越小越慢）',code:'EMOTION_DECAY_PROTECT', min:0.15, max:1.0, step:0.05, def:0.40, val:0.40, fmt:v=>'×'+v.toFixed(2) },
+    { id:'we',  cn:'检索重排 · 情绪匹配权重',desc:'调高后高情绪共鸣记忆名次上升', code:'WEIGHT_EMOTION', min:0.00, max:0.30, step:0.01, def:0.05, val:0.05, fmt:v=>v.toFixed(2) },
+    { id:'st',  cn:'短期记忆 3 天淘汰分数线',desc:'短期池跌破该分数直接清理淘汰', code:'SHORT_TERM_THRESHOLD', min:10, max:60, step:2, def:30, val:30, fmt:v=>v.toFixed(1)+' 分' },
+    { id:'cd',  cn:'冷存归档静默天数阈值',desc:'超天数且<20分自动迁入冷存冻结',   code:'COLD_ARCHIVE_DAYS', min:60, max:365, step:5, def:180, val:180, fmt:v=>v.toFixed(0)+' 天' },
+    { id:'wb',  cn:'课表生效期额外召回加分',desc:'处于课表时间窗内额外加多少总分',code:'ACTIVE_WINDOW_BONUS', min:0.00, max:0.20, step:0.01, def:0.08, val:0.08, fmt:v=>'+'+v.toFixed(2) }
+  ];
+  const P = Object.fromEntries(PARAMS.map(p => [p.id, p]));
+
+  const paramGrid = document.getElementById('paramGrid');
+  paramGrid.innerHTML = PARAMS.map(p => {
+    const pct = ((p.val - p.min) / (p.max - p.min)) * 100;
+    const defPct = ((p.def - p.min) / (p.max - p.min)) * 100;
+    return `<div class="p-card" id="pcard_${p.id}">
+      <div class="p-top"><span class="p-name">${p.cn}</span><span class="p-val" id="pval_${p.id}">${p.fmt(p.val)}</span></div>
+      <div class="p-meta"><span>${p.desc}</span><span class="p-var">${p.code}</span></div>
+      <div class="c-slider">
+        <div class="cs-track">
+          <div class="cs-fill" id="pfill_${p.id}" style="width:${pct}%"></div>
+          <div class="cs-def" style="left:${defPct}%" title="默认值 ${p.fmt(p.def)}"></div>
+          <div class="cs-thumb" id="pthumb_${p.id}" style="left:${pct}%"></div>
+        </div>
+        <input type="range" id="pinp_${p.id}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.val}" />
+      </div>
+    </div>`;
+  }).join('');
+
+  function syncParamUI(p) {
+    const pct = ((p.val - p.min) / (p.max - p.min)) * 100;
+    const defPct = ((p.def - p.min) / (p.max - p.min)) * 100;
+    const card = document.getElementById('pcard_' + p.id);
+    const defEl = card.querySelector('.cs-def');
+    if (defEl) { defEl.style.left = defPct + '%'; defEl.title = '默认值 ' + p.fmt(p.def); }
+    document.getElementById('pval_' + p.id).textContent = p.fmt(p.val);
+    document.getElementById('pfill_' + p.id).style.width = pct + '%';
+    document.getElementById('pthumb_' + p.id).style.left = pct + '%';
+    card.classList.toggle('changed', Math.abs(p.val - p.def) > 1e-4);
+  }
+
+  PARAMS.forEach(p => {
+    document.getElementById('pinp_' + p.id).addEventListener('input', e => {
+      p.val = parseFloat(e.target.value);
+      syncParamUI(p);
+      document.getElementById('simBadge').textContent = '内存仿真中 · 未写盘';
+      updateRerank();
+    });
+  });
+
+  // ===== 5 REAL MEMORY ARCHETYPES =====
+  let SAMPLES = LAB.samples;
+
+  // REAL recall_audit.jsonl daily counts
+  let AUDIT_DAYS = LAB.recall?.days.map(day => [day[0].slice(5), ...day.slice(1)]) || [['—', null, null, null]];
+  let MAX_AUDIT_V = 2500;
+
+  // Build Vertical Rounded Square Heatmap that dynamically fills all the way down flush against .metrics-4 on any screen height!
+  const hmMat = document.getElementById('hmMat'), hmOut = document.getElementById('hmHoverOut');
+  const HM_COLS = ['#131B28', '#1E3352', '#2E548A', '#487CC6', '#84BAFF'];
+  let lastHmRows = 0;
+  function buildHeatmap() {
+    const realTail = AUDIT_DAYS.filter(d => d[1] !== null);
+    const r = hmMat.getBoundingClientRect();
+    const cols = 9, gap = 2.5;
+    const cellW = Math.max(11, ((r.width || 140) - (cols - 1) * gap) / cols);
+    const rows = Math.max(8, Math.round(((r.height || 150) + gap) / (cellW + gap)));
+    if (rows === lastHmRows && hmMat.children.length > 0) return;
+    lastHmRows = rows;
+    hmMat.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    hmMat.innerHTML = '';
+    const total = cols * rows;
+    for (let i = 0; i < total; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'hm-cell';
+      const tailIdx = i - (total - realTail.length);
+      if (tailIdx >= 0) {
+        const [dt, cnt] = realTail[tailIdx];
+        const lvl = cnt > 1200 ? 4 : cnt > 400 ? 3 : cnt > 150 ? 2 : 1;
+        cell.style.background = HM_COLS[lvl];
+        cell.addEventListener('mouseenter', () => { hmOut.textContent = `${dt} · 召回 ${cnt} 次`; });
+      } else {
+        cell.style.background = HM_COLS[0];
+        cell.addEventListener('mouseenter', () => { hmOut.textContent = `历史空白期 · 无记录 (0次)`; });
+      }
+      hmMat.appendChild(cell);
+    }
+  }
+  buildHeatmap();
+  window.addEventListener('resize', buildHeatmap);
+
+  function fitCv(cv) {
+    const r = cv.parentElement.getBoundingClientRect();
+    const w = Math.max(220, Math.round(r.width || 560)), h = Math.max(120, Math.round(r.height || 180));
+    const tw = Math.round(w * DPR), th = Math.round(h * DPR);
+    if (Math.abs(cv.width - tw) > 1 || Math.abs(cv.height - th) > 1) {
+      cv.width = tw; cv.height = th;
+    }
+    const ctx = cv.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    return { ctx, w, h };
+  }
+  function buildMonotone(ctx, pts) {
+    const n = pts.length; if (n < 2) return;
+    const dx=[], dy=[], m=[];
+    for (let i=0;i<n-1;i++){ dx[i]=pts[i+1].x-pts[i].x; dy[i]=pts[i+1].y-pts[i].y; m[i]=dy[i]/(dx[i]||1e-6); }
+    const t = new Array(n).fill(0); t[0]=m[0]; t[n-1]=m[n-2];
+    for (let i=1;i<n-1;i++) t[i]=(m[i-1]*m[i]<=0)?0:(m[i-1]+m[i])*0.5;
+    for (let i=0;i<n-1;i++){
+      if (Math.abs(m[i])<1e-6){ t[i]=0; t[i+1]=0; continue; }
+      const a=t[i]/m[i], b=t[i+1]/m[i], h=Math.hypot(a,b);
+      if (h>3){ const s=3/h; t[i]=s*a*m[i]; t[i+1]=s*b*m[i]; }
+    }
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i=0;i<n-1;i++){
+      const h=dx[i]/3;
+      ctx.bezierCurveTo(pts[i].x+h, pts[i].y+h*t[i], pts[i+1].x-h, pts[i+1].y-h*t[i+1], pts[i+1].x, pts[i+1].y);
+    }
+  }
+  function sampleInterp(arr, fIdx) {
+    if (!arr) return null;
+    const n = arr.length;
+    const i0 = Math.max(0, Math.min(n-1, Math.floor(fIdx))), i1 = Math.max(0, Math.min(n-1, Math.ceil(fIdx)));
+    if (arr[i0] === null || arr[i1] === null) return null;
+    if (i0 === i1) return arr[i0];
+    const u = fIdx - i0, cs = (1 - Math.cos(u * Math.PI)) * 0.5;
+    return arr[i0] + (arr[i1] - arr[i0]) * (u * 0.65 + cs * 0.35);
+  }
+  function drawPill(ctx, w, h, txt, px, py) {
+    ctx.save(); ctx.font = '600 9.5px "JetBrains Mono", monospace';
+    const pw = ctx.measureText(txt).width + 10, ph = 15.5;
+    const rx = Math.max(2, Math.min(w - pw - 2, px - pw / 2)), ry = Math.max(2, Math.min(h - ph - 1, py - ph / 2));
+    ctx.fillStyle = '#121B2A'; ctx.strokeStyle = 'rgba(118,180,255,0.55)'; ctx.lineWidth = 0.85;
+    ctx.beginPath(); ctx.roundRect(rx, ry, pw, ph, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#A8D0FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(txt, rx + pw / 2, ry + ph / 2 + 0.4); ctx.restore();
+  }
+
+  // ===== CHART 1: 3-TRACK CURVE =====
+  const cv1 = document.getElementById('cv1'), box1 = document.getElementById('box1'), tip1 = document.getElementById('tip1');
+  let hov1 = { active: true, x: null, y: null, idx: 20, pinned: true };
+  const N1 = 48, MISS1 = 9, NOW1 = 34;
+
+  function compute3Track() {
+    const smp = SAMPLES[curSample];
+    const det = [...smp.det], imp = smp.imp ? [...smp.imp] : null, emo = [...smp.emo];
+    const floor = smp.mode === 'short' ? P.st.val : smp.floor;
+    for (let d = 1; d <= N1 - 1 - NOW1; d++) {
+      const d0 = det[NOW1];
+      if (smp.mode === 'cold') det.push(d0);
+      else if (smp.mode === 'short') {
+        const tDays = (d / (N1 - 1 - NOW1)) * 3.0;
+        det.push(Math.max(0, 100 * (1 - Math.pow(tDays / 3.0, 2))));
+      } else {
+        const rate = smp.mode === 'episode' ? P.ep.val : P.d2.val;
+        det.push(Math.max(floor, d0 - d * rate * P.epf.val * 1.15));
+      }
+      if (imp) imp.push(Math.max(Math.min(55, smp.ev * 0.6), imp[NOW1] - d * 0.32));
+      emo.push(smp.mode === 'cold' ? emo[NOW1] : Math.max(smp.em * 0.25, emo[NOW1] - d * P.erd.val * 3.6));
+    }
+    return { det, imp, emo, floor, smp };
+  }
+
+  function drawChart1(tPulse) {
+    const { ctx, w, h } = fitCv(cv1);
+    const { det, imp, emo, floor, smp } = compute3Track();
+    const PAD = { l: 42, r: 14, t: 18, b: 22 };
+    const ix = i => PAD.l + (i / (N1 - 1)) * (w - PAD.l - PAD.r);
+    const vy = v => PAD.t + (1 - Math.max(0, Math.min(100, v)) / 100) * (h - PAD.t - PAD.b);
+    const lbl = i => i <= MISS1 ? '历史缺测' : i === NOW1 ? 'NOW' : (i < NOW1 ? (NOW1-i)+'天前' : '+'+(i-NOW1)+'天');
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.font = '9.5px "JetBrains Mono", monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    [0, 25, 50, 75, 100].forEach(v => {
+      const y = Math.round(vy(v)) + 0.5;
+      ctx.strokeStyle = v === 0 ? 'rgba(154,182,222,0.13)' : 'rgba(154,182,222,0.042)'; ctx.lineWidth = 0.75;
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(w - PAD.r, y); ctx.stroke();
+      ctx.fillStyle = '#5F718A'; ctx.fillText(String(v), PAD.l - 8, y);
+    });
+
+    const mx = ix(MISS1 + 1);
+    ctx.save();
+    ctx.fillStyle = 'rgba(154,182,222,0.022)'; ctx.fillRect(PAD.l, PAD.t, mx - PAD.l, h - PAD.t - PAD.b);
+    ctx.beginPath(); ctx.rect(PAD.l, PAD.t, mx - PAD.l, h - PAD.t - PAD.b); ctx.clip();
+    ctx.strokeStyle = 'rgba(154,182,222,0.045)'; ctx.lineWidth = 0.7;
+    ctx.beginPath(); for (let k = PAD.l - 180; k < mx + 20; k += 10) { ctx.moveTo(k, h - PAD.b); ctx.lineTo(k + 180, PAD.t); } ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#5A6B82'; ctx.font = '9.5px "PingFang SC", sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('历史缺测 (零伪造)', PAD.l + (mx - PAD.l) / 2, PAD.t + (h - PAD.t - PAD.b) / 2);
+
+    const fy = Math.round(vy(floor)) + 0.5, nx = Math.round(ix(NOW1)) + 0.5;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(118,180,255,0.28)'; ctx.lineWidth = 0.75; ctx.setLineDash([2.5, 4]);
+    ctx.beginPath(); ctx.moveTo(mx, fy); ctx.lineTo(w - PAD.r, fy); ctx.stroke();
+    ctx.fillStyle = '#8AC2FF'; ctx.font = '9px "JetBrains Mono", monospace'; ctx.textAlign = 'right';
+    ctx.fillText((smp.mode === 'short' ? '淘汰线 ' : 'real_floor ') + floor.toFixed(1), w - PAD.r - 4, fy - 6);
+    ctx.strokeStyle = 'rgba(130,188,255,0.38)'; ctx.setLineDash([2.5, 3]);
+    ctx.beginPath(); ctx.moveTo(nx, PAD.t); ctx.lineTo(nx, h - PAD.b); ctx.stroke();
+    ctx.textAlign = 'center'; ctx.fillText('NOW', nx, PAD.t - 6);
+    ctx.restore();
+
+    ctx.font = '9.5px "JetBrains Mono", "PingFang SC", sans-serif'; ctx.fillStyle = '#5F718A';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    [12, 20, 27, NOW1, 41, 47].forEach(i => ctx.fillText(lbl(i), ix(i), h - PAD.b + 5));
+
+    const strokeC = (arr, sI, eI, col, lw, dash, fill, glow, core) => {
+      if (!arr) return;
+      const pts = []; for (let i = sI; i <= eI; i++) if (arr[i] !== null) pts.push({ x: ix(i), y: vy(arr[i]) });
+      if (pts.length < 2) return;
+      if (fill) {
+        buildMonotone(ctx, pts);
+        ctx.lineTo(pts[pts.length-1].x, h-PAD.b); ctx.lineTo(pts[0].x, h-PAD.b); ctx.closePath();
+        ctx.fillStyle = fill; ctx.fill();
+      }
+      ctx.save();
+      buildMonotone(ctx, pts);
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round';
+      if (dash) ctx.setLineDash(dash);
+      if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = 6; }
+      ctx.stroke();
+      if (core) {
+        ctx.shadowBlur = 0; ctx.strokeStyle = core; ctx.lineWidth = lw * 0.35;
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
+    // Layer 3: Emotion Residue — Muted Deep Slate-Indigo (#7B76B8, 0.85px)
+    const gE = ctx.createLinearGradient(0, PAD.t + 26, 0, h - PAD.b);
+    gE.addColorStop(0, 'rgba(123, 118, 184, 0.11)');
+    gE.addColorStop(1, 'rgba(123, 118, 184, 0)');
+    strokeC(emo, MISS1+1, NOW1, '#7B76B8', 0.85, null, gE);
+    strokeC(emo, NOW1, N1-1, 'rgba(123, 118, 184, 0.56)', 0.72, [2, 3]);
+
+    // Layer 2: Core Impression — Matte Metallic Silver-Grey (#A6B5C9, 1.12px)
+    const gI = ctx.createLinearGradient(0, PAD.t + 16, 0, h - PAD.b);
+    gI.addColorStop(0, 'rgba(166, 181, 201, 0.055)');
+    gI.addColorStop(1, 'rgba(166, 181, 201, 0)');
+    strokeC(imp, MISS1+1, NOW1, '#A6B5C9', 1.12, null, gI);
+    strokeC(imp, NOW1, N1-1, 'rgba(166, 181, 201, 0.54)', 0.92, [3, 3.5]);
+
+    // Layer 1: Detail / Active Strength — Restrained Satin Starry Blue (#659BE6, 1.75px)
+    const gM = ctx.createLinearGradient(0, PAD.t, 0, h - PAD.b);
+    gM.addColorStop(0, 'rgba(101, 155, 230, 0.25)');
+    gM.addColorStop(0.55, 'rgba(101, 155, 230, 0.055)');
+    gM.addColorStop(1, 'rgba(101, 155, 230, 0)');
+    const gF = ctx.createLinearGradient(0, PAD.t + 10, 0, h - PAD.b);
+    gF.addColorStop(0, 'rgba(101, 155, 230, 0.11)');
+    gF.addColorStop(1, 'rgba(101, 155, 230, 0)');
+    strokeC(det, MISS1+1, NOW1, '#659BE6', 1.75, null, gM, 'rgba(101, 155, 230, 0.34)', 'rgba(218, 236, 255, 0.48)');
+    strokeC(det, NOW1, N1-1, 'rgba(101, 155, 230, 0.68)', 1.22, [3.5, 4], gF);
+
+    // Subtle single pulse bead gliding along main curve up to NOW (exact cosmos_blue_spec_preview feel)
+    const pF = MISS1 + 1 + ((tPulse * 4.8) % (NOW1 - MISS1 - 1));
+    const pv = sampleInterp(det, pF);
+    if (pv !== null) {
+      ctx.fillStyle = 'rgba(214, 236, 255, 0.90)';
+      ctx.beginPath(); ctx.arc(ix(pF), vy(pv), 2.0, 0, Math.PI * 2); ctx.fill();
+    }
+
+    if (hov1.active) {
+      const fIdx = hov1.pinned ? hov1.idx : Math.max(0, Math.min(N1-1, ((hov1.x - PAD.l)/(w - PAD.l - PAD.r))*(N1-1)));
+      const cx = ix(fIdx), vd = sampleInterp(det, fIdx), vi = sampleInterp(imp, fIdx), ve = sampleInterp(emo, fIdx);
+      const rawY = hov1.y !== null ? Math.max(0, Math.min(100, (1 - (hov1.y - PAD.t)/(h - PAD.t - PAD.b))*100)) : (vd !== null ? vd : 50);
+      const tv = (snapMode && vd !== null) ? vd : rawY;
+      const cy = vy(tv);
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(130, 183, 247, 0.46)'; ctx.lineWidth = 0.75; ctx.setLineDash([2.5, 3]);
+      ctx.beginPath(); ctx.moveTo(cx, PAD.t); ctx.lineTo(cx, h - PAD.b); ctx.stroke();
+      ctx.strokeStyle = 'rgba(205, 222, 244, 0.20)';
+      ctx.beginPath(); ctx.moveTo(PAD.l, cy); ctx.lineTo(w - PAD.r, cy); ctx.stroke();
+      ctx.restore();
+
+      if (ve !== null) { ctx.fillStyle = '#7B76B8'; ctx.beginPath(); ctx.arc(cx, vy(ve), 2.1, 0, Math.PI*2); ctx.fill(); }
+      if (vi !== null) { ctx.fillStyle = '#A6B5C9'; ctx.beginPath(); ctx.arc(cx, vy(vi), 2.4, 0, Math.PI*2); ctx.fill(); }
+      if (vd !== null) {
+        const py = vy(vd);
+        ctx.fillStyle = 'rgba(101, 155, 230, 0.24)'; ctx.beginPath(); ctx.arc(cx, py, 7.2, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#CFE4FF'; ctx.strokeStyle = '#0B0E14'; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(cx, py, 3.2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      }
+      const lx = lbl(Math.round(fIdx));
+      drawPill(ctx, w, h, lx, cx, h - PAD.b + 10);
+      drawPill(ctx, w, h, (snapMode && vd === null) ? '缺测' : tv.toFixed(1), PAD.l / 2 + 2, cy);
+
+      const st = fIdx <= MISS1 + 0.5 ? '历史缺测' : fIdx > NOW1 + 0.3 ? '未来推演' : '实测节点';
+      tip1.innerHTML = vd === null
+        ? `<div class="ft-h"><span>${lx}</span><span>${st}</span></div><div class="ft-r"><span class="ft-k">无历史快照，零伪造插值</span></div>`
+        : `<div class="ft-h"><span>${lx}</span><span>${st}</span></div>
+           <div class="ft-r"><span class="ft-k"><i class="leg-l" style="height:2.2px;background:#659BE6"></i>细节清晰度</span><span class="ft-v">${vd.toFixed(1)}</span></div>
+           ${vi !== null ? `<div class="ft-r"><span class="ft-k"><i class="leg-l" style="height:1.3px;background:#A6B5C9"></i>核心印象</span><span class="ft-v">${vi.toFixed(1)}</span></div>` : ''}
+           <div class="ft-r"><span class="ft-k"><i class="leg-l" style="height:0.9px;background:#7B76B8"></i>情绪余温</span><span class="ft-v">${ve.toFixed(1)}</span></div>`;
+      tip1.style.left = ((cx + 185 < w) ? (cx + 14) : (cx - 178)) + 'px';
+      tip1.style.top = Math.max(6, Math.min(h - 86, cy - 34)) + 'px';
+      tip1.classList.add('show');
+    } else { tip1.classList.remove('show'); }
+  }
+
+  // ===== CHART 2: REAL AUDIT CURVE (3-TIER SATIN LAYERED TEXTURE) =====
+  const cv2 = document.getElementById('cv2'), box2 = document.getElementById('box2'), tip2 = document.getElementById('tip2');
+  let hov2 = { active: true, x: null, y: null, idx: Math.min(11, AUDIT_DAYS.length - 1), pinned: true };
+
+  function drawChart2(tPulse) {
+    const { ctx, w, h } = fitCv(cv2);
+    if (!LAB.recall?.days.length) {
+      ctx.clearRect(0,0,w,h); ctx.fillStyle = '#8297B2'; ctx.font = '12px system-ui';
+      ctx.fillText('当前来源没有召回审计日志', 25, h/2); return;
+    }
+    const N2 = AUDIT_DAYS.length;
+    const firstObs = AUDIT_DAYS.findIndex(d => d[1] !== null);
+    const MISS2 = firstObs > 0 ? firstObs - 1 : -1;
+    const MAX_V = MAX_AUDIT_V;
+    const PAD = { l: 42, r: 10, t: 14, b: 22 };
+    const ix = i => PAD.l + (i / Math.max(1, N2 - 1)) * (w - PAD.l - PAD.r);
+    const vy = v => PAD.t + (1 - Math.max(0, Math.min(MAX_V, v)) / MAX_V) * (h - PAD.t - PAD.b);
+    const vals = AUDIT_DAYS.map(d => d[1]);
+    const valsAct = AUDIT_DAYS.map(d => d[2]);
+    const valsFlr = AUDIT_DAYS.map(d => d[3]);
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.font = '9px "JetBrains Mono", monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    const midTick = Math.round(MAX_V * 0.5);
+    [0, midTick, MAX_V].forEach(v => {
+      const y = Math.round(vy(v)) + 0.5;
+      ctx.strokeStyle = v === 0 ? 'rgba(148,172,206,0.14)' : 'rgba(148,172,206,0.045)'; ctx.lineWidth = 0.75;
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(w - PAD.r, y); ctx.stroke();
+      ctx.fillStyle = '#5F718A'; ctx.fillText(v === 0 ? '0' : (v / 1000).toFixed(1) + 'k', PAD.l - 7, y);
+    });
+
+    if (MISS2 >= 0) {
+      const mx = ix(MISS2 + 1);
+      ctx.save();
+      ctx.fillStyle = 'rgba(148,172,206,0.024)'; ctx.fillRect(PAD.l, PAD.t, mx - PAD.l, h - PAD.t - PAD.b);
+      ctx.beginPath(); ctx.rect(PAD.l, PAD.t, mx - PAD.l, h - PAD.t - PAD.b); ctx.clip();
+      ctx.strokeStyle = 'rgba(148,172,206,0.045)'; ctx.lineWidth = 0.7;
+      ctx.beginPath(); for (let k = PAD.l - 150; k < mx + 20; k += 9) { ctx.moveTo(k, h - PAD.b); ctx.lineTo(k + 150, PAD.t); } ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = '#5A6B82'; ctx.font = '9px "PingFang SC", sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('无记录缺测', PAD.l + (mx - PAD.l) / 2, PAD.t + (h - PAD.t - PAD.b) / 2);
+    }
+
+    ctx.font = '9px "JetBrains Mono", monospace'; ctx.fillStyle = '#5F718A';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const startLbl = Math.max(0, MISS2 + 1);
+    const stepLbl = Math.max(1, Math.floor((N2 - startLbl) / 6));
+    for (let i = startLbl; i < N2; i += stepLbl) ctx.fillText(AUDIT_DAYS[i][0], ix(i), h - PAD.b + 5);
+
+    const drawSubCurve = (arr, col, lw, fill, glow, core) => {
+      const pts = []; for (let i = MISS2 + 1; i < N2; i++) if (arr[i] !== null) pts.push({ x: ix(i), y: vy(arr[i]) });
+      if (pts.length < 2) return;
+      if (fill) {
+        buildMonotone(ctx, pts);
+        ctx.lineTo(pts[pts.length-1].x, h - PAD.b); ctx.lineTo(pts[0].x, h - PAD.b); ctx.closePath();
+        ctx.fillStyle = fill; ctx.fill();
+      }
+      ctx.save();
+      buildMonotone(ctx, pts);
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round';
+      if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = 6; }
+      ctx.stroke();
+      if (core) { ctx.shadowBlur = 0; ctx.strokeStyle = core; ctx.lineWidth = lw * 0.35; ctx.stroke(); }
+      ctx.restore();
+    };
+
+    // Layer 3: High-floor / Emotion recall sub-track (0.85px #7B76B8)
+    const gF2 = ctx.createLinearGradient(0, PAD.t + 24, 0, h - PAD.b);
+    gF2.addColorStop(0, 'rgba(123, 118, 184, 0.11)'); gF2.addColorStop(1, 'rgba(123, 118, 184, 0)');
+    drawSubCurve(valsFlr, '#7B76B8', 0.85, gF2);
+
+    // Layer 2: Active L0-L2 pool recall sub-track (1.12px #A6B5C9)
+    const gA2 = ctx.createLinearGradient(0, PAD.t + 14, 0, h - PAD.b);
+    gA2.addColorStop(0, 'rgba(166, 181, 201, 0.06)'); gA2.addColorStop(1, 'rgba(166, 181, 201, 0)');
+    drawSubCurve(valsAct, '#A6B5C9', 1.12, gA2);
+
+    // Layer 1: Total Recall Audit Hits (1.75px #659BE6, restrained satin glow)
+    const gA = ctx.createLinearGradient(0, PAD.t, 0, h - PAD.b);
+    gA.addColorStop(0, 'rgba(101, 155, 230, 0.25)'); gA.addColorStop(0.55, 'rgba(101, 155, 230, 0.055)'); gA.addColorStop(1, 'rgba(101, 155, 230, 0)');
+    drawSubCurve(vals, '#659BE6', 1.75, gA, 'rgba(101, 155, 230, 0.34)', 'rgba(218, 236, 255, 0.48)');
+
+    if (hov2.active) {
+      const fIdx = hov2.pinned ? hov2.idx : Math.max(0, Math.min(N2-1, ((hov2.x - PAD.l)/(w - PAD.l - PAD.r))*(N2-1)));
+      const rIdx = Math.round(fIdx), cx = ix(fIdx), v = sampleInterp(vals, fIdx), vA = sampleInterp(valsAct, fIdx), vF = sampleInterp(valsFlr, fIdx);
+      const rawY = hov2.y !== null ? Math.max(0, Math.min(MAX_V, (1 - (hov2.y - PAD.t)/(h - PAD.t - PAD.b))*MAX_V)) : (v !== null ? v : 800);
+      const tv = (snapMode && v !== null) ? v : rawY;
+      const cy = vy(tv);
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(130, 183, 247, 0.45)'; ctx.lineWidth = 0.75; ctx.setLineDash([2.5, 3]);
+      ctx.beginPath(); ctx.moveTo(cx, PAD.t); ctx.lineTo(cx, h - PAD.b); ctx.stroke();
+      ctx.strokeStyle = 'rgba(205, 222, 244, 0.20)';
+      ctx.beginPath(); ctx.moveTo(PAD.l, cy); ctx.lineTo(w - PAD.r, cy); ctx.stroke();
+      ctx.restore();
+
+      if (vF !== null) { ctx.fillStyle = '#7B76B8'; ctx.beginPath(); ctx.arc(cx, vy(vF), 2.0, 0, Math.PI*2); ctx.fill(); }
+      if (vA !== null) { ctx.fillStyle = '#A6B5C9'; ctx.beginPath(); ctx.arc(cx, vy(vA), 2.3, 0, Math.PI*2); ctx.fill(); }
+      if (v !== null) {
+        const py = vy(v);
+        ctx.fillStyle = 'rgba(101, 155, 230, 0.24)'; ctx.beginPath(); ctx.arc(cx, py, 6.8, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#CFE4FF'; ctx.strokeStyle = '#0B0E14'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(cx, py, 3.0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      }
+      const day = AUDIT_DAYS[rIdx];
+      if (!day) return;
+      const dayLbl = day[0];
+      drawPill(ctx, w, h, dayLbl, cx, h - PAD.b + 10);
+      drawPill(ctx, w, h, (snapMode && v === null) ? '缺测' : Math.round(tv) + '次', PAD.l / 2 + 1, cy);
+
+      const exactV = day[1];
+      tip2.innerHTML = exactV === null
+        ? `<div class="ft-h"><span>${dayLbl}</span><span>历史缺测</span></div><div class="ft-r"><span class="ft-k">无审计记录</span></div>`
+        : `<div class="ft-h"><span>${dayLbl}</span><span>实测审计</span></div>
+           <div class="ft-r"><span class="ft-k"><i class="leg-l" style="height:2.2px;background:#659BE6"></i>当日总召回</span><span class="ft-v">${exactV} 次</span></div>
+           <div class="ft-r"><span class="ft-k"><i class="leg-l" style="height:1.3px;background:#A6B5C9"></i>含 Level-2</span><span class="ft-v">${valsAct[rIdx]} 次</span></div>
+           <div class="ft-r"><span class="ft-k"><i class="leg-l" style="height:0.9px;background:#7B76B8"></i>含 Level-3</span><span class="ft-v">${valsFlr[rIdx]} 次</span></div>`;
+      tip2.style.left = ((cx + 168 < w) ? (cx + 10) : (cx - 165)) + 'px';
+      tip2.style.top = Math.max(4, Math.min(h - 78, cy - 26)) + 'px';
+      tip2.classList.add('show');
+    } else { tip2.classList.remove('show'); }
+  }
+
+  // ===== STACKED HYBRID RERANK TOP-5 LIST =====
+  let CANDS = LAB.candidates;
+  function updateRerank() {
+    const we = P.we.val, wb = P.wb.val, wSim = Math.max(0.55, 0.85 - we);
+    document.getElementById('formulaTag').textContent = `${wSim.toFixed(2)}·语义 + 0.15·强度 + ${we.toFixed(2)}·情绪 + ${wb.toFixed(2)}·课表`;
+    const list = CANDS.map(c => {
+      const sSim = c.sim * wSim, sStr = c.str * 0.15, sEmo = c.emo * we, sWin = c.win ? wb : 0;
+      return { ...c, sSim, sStr, sEmo, sWin, tot: sSim + sStr + sEmo + sWin };
+    }).sort((a, b) => b.tot - a.tot);
+
+    document.getElementById('rrList').innerHTML = list.map((c, idx) => {
+      const diff = c.base - (idx + 1);
+      const mv = diff > 0 ? `<span class="badge ok">▲+${diff}</span>` : diff < 0 ? `<span class="badge warn">▼${diff}</span>` : `<span class="mono" style="color:#556680;font-size:10px">—</span>`;
+      return `<div class="rr-row">
+        <span class="rr-rank">#${idx+1}</span>
+        <div class="rr-title">${escapeHtml(c.t)}<span class="rr-sub">${escapeHtml(c.pool)}</span></div>
+        <div class="rr-bars">
+          <div class="rr-stack">
+            <div style="width:${(c.sSim*100).toFixed(1)}%;background:#659BE6" title="语义分"></div>
+            <div style="width:${(c.sStr*100).toFixed(1)}%;background:#A8B8CE" title="强度分"></div>
+            <div style="width:${(c.sEmo*100).toFixed(1)}%;background:#8880CE" title="情绪分"></div>
+            <div style="width:${(c.sWin*100).toFixed(1)}%;background:#52C8A8" title="课表加分"></div>
+          </div>
+          <div class="rr-legend-mini"><span>语义 ${c.sim.toFixed(2)}</span><span>强度 ${c.str.toFixed(2)}</span><span style="color:#A39CE8">情绪 ${c.emo.toFixed(2)}</span></div>
+        </div>
+        <span class="rr-tot">${c.tot.toFixed(3)}</span>
+        <div class="rr-mv">${mv}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Events
+  box1.addEventListener('mousemove', e => { const r=box1.getBoundingClientRect(); hov1={active:true,x:e.clientX-r.left,y:e.clientY-r.top,idx:20,pinned:false}; });
+  box1.addEventListener('mouseleave', () => { hov1.active = false; });
+  box2.addEventListener('mousemove', e => { const r=box2.getBoundingClientRect(); hov2={active:true,x:e.clientX-r.left,y:e.clientY-r.top,idx:11,pinned:false}; });
+  box2.addEventListener('mouseleave', () => { hov2.active = false; });
+
+  document.querySelectorAll('#samplePills .pill').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#samplePills .pill').forEach(x => x.classList.remove('active'));
+    b.classList.add('active'); curSample = Number(b.dataset.s);
+    const s = SAMPLES[curSample];
+    document.getElementById('c1Title').textContent = '单条记忆三轨衰减与沙盒推演 · ' + s.name;
+    document.getElementById('frozenInfo').innerHTML = `只读冻结：<strong style="color:#E2ECFA">当时事件强度 = ${s.ev?.toFixed(1) ?? '—'}</strong> · <strong style="color:#E2ECFA">当时情绪强度 = ${s.em?.toFixed(1) ?? '—'}</strong>（历史原始值永不改写）`;
+    document.getElementById('floorReadout').textContent = s.rule;
+    hov1 = { active: true, x: null, y: null, idx: 20, pinned: true };
+  }));
+
+  document.getElementById('btnSnap').addEventListener('click', function(){
+    snapMode = !snapMode;
+    this.innerHTML = '<i></i> 悬停 X/Y 准星：' + (snapMode ? '磁吸曲线' : '自由光标');
+  });
+  let settingsRev = null;
+  let previousSettings = {};
+  document.getElementById('btnApply').addEventListener('click', async function() {
+    if (!location.protocol.startsWith('http')) {
+      document.getElementById('simBadge').textContent = '已模拟回读校验 ✓';
+      document.getElementById('overrideOut').innerHTML = '<span style="color:#64D4B4">当前沙盒参数已更新</span>';
+      return;
+    }
+    const finish = parent.showButtonProgress(this, '保存中…');
+    this.disabled = true;
+    const values = Object.fromEntries(PARAMS.map(p => [p.id, p.val]));
+    try {
+      const r = await fetch('/api/settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values, revision: settingsRev })
+      });
+      const res = await r.json();
+      if (!r.ok) {
+        document.getElementById('simBadge').textContent = '保存被拦截';
+        document.getElementById('overrideOut').innerHTML = `<span style="color:#F08A95">⚠ HTTP ${r.status}: ${res.error || '校验失败，已回滚'}</span>`;
+        if (r.status === 409) await hydrateSettings();
+        return;
+      }
+      settingsRev = res.revision;
+      PARAMS.forEach(p => {
+        if (res.values && typeof res.values[p.id] === 'number') {
+          p.val = res.values[p.id];
+          document.getElementById('pinp_' + p.id).value = p.val;
+          syncParamUI(p);
+        }
+      });
+      document.getElementById('simBadge').textContent = LAB.canWrite('settings') ? (res.written ? '已保存到记忆库 ✓' : '模型参数无变化') : '已应用到沙盒 ✓';
+      document.getElementById('overrideOut').textContent = LAB.canWrite('settings') ? '模型参数已回读核对' : '当前沙盒参数已更新';
+    } catch (e) {
+      document.getElementById('overrideOut').innerHTML = '<span style="color:#F08A95">⚠ 本地参数计算失败</span>';
+    } finally {
+      finish();
+      this.disabled = false;
+    }
+  });
+  document.getElementById('btnReset').addEventListener('click', () => {
+    PARAMS.forEach(p => { p.val = p.def; document.getElementById('pinp_' + p.id).value = p.def; syncParamUI(p); });
+    document.getElementById('simBadge').textContent = '已恢复默认值';
+    updateRerank();
+  });
+
+  async function hydrateSettings(preserveEdits = false) {
+    const r = await fetch('/api/settings', { cache: 'no-store' });
+    if (!r.ok) return;
+    const res = await r.json();
+    settingsRev = res.revision;
+    PARAMS.forEach(p => {
+      if (res.defaults && typeof res.defaults[p.id] === 'number') p.def = res.defaults[p.id];
+      if (!preserveEdits || p.val === previousSettings[p.id]) {
+        p.val = res.values?.[p.id] ?? p.def;
+        document.getElementById('pinp_' + p.id).value = p.val;
+      }
+      syncParamUI(p);
+    });
+    previousSettings = Object.fromEntries(PARAMS.map(p => [p.id, res.values?.[p.id] ?? p.def]));
+    if (!preserveEdits) document.getElementById('simBadge').textContent = LAB.canWrite('settings') ? '本机写入已启用' : '本机参数沙盒';
+    if (LAB.canWrite('settings')) document.getElementById('btnApply').textContent = '保存到记忆库';
+    updateRerank();
+  }
+
+  async function hydrateTelemetry() {
+    const r = await fetch('/api/telemetry', { cache: 'no-store' });
+    if (!r.ok) return;
+    const res = await r.json();
+    const rec = res.recall;
+    if (!rec?.days?.length) {
+      AUDIT_DAYS = [['—', null, null, null]];
+      lastHmRows = 0; buildHeatmap();
+      document.getElementById('auditSub').textContent = '来源暂无召回审计记录';
+      for (const id of ['m4Obs', 'm4Long', 'm4Peak', 'm4Avg']) document.getElementById(id).textContent = '—';
+      return;
+    }
+    if (rec.days.length) {
+      AUDIT_DAYS = rec.days.map(d => [String(d[0]).slice(5), d[1], d[2], d[3]]);
+      MAX_AUDIT_V = Math.max(1000, Math.ceil((rec.peak || 2000) * 1.15 / 500) * 500);
+      hov2.idx = Math.max(0, AUDIT_DAYS.findIndex(d => d[0] === String(rec.peak_day || '').slice(5)));
+      if (hov2.idx < 0) hov2.idx = AUDIT_DAYS.length - 1;
+      lastHmRows = 0; buildHeatmap();
+      document.getElementById('auditSub').textContent = `实测 ${rec.total.toLocaleString()} 次命中 · 无记录日诚实标「历史缺测」`;
+      document.getElementById('hmHoverOut').textContent = `最高峰 ${String(rec.peak_day || '').slice(5)} · ${(rec.peak || 0).toLocaleString()} 次`;
+      document.getElementById('m4Obs').textContent = `${rec.n} 天`;
+      document.getElementById('m4Long').textContent = `${rec.longest} 天`;
+      document.getElementById('m4Peak').textContent = `${(rec.peak || 0).toLocaleString()} 次`;
+      document.getElementById('m4Avg').textContent = `${Math.round(rec.total / Math.max(1, rec.n)).toLocaleString()} 次`;
+    }
+  }
+
+  if (location.protocol.startsWith('http')) {
+    hydrateSettings().catch(() => {});
+    hydrateTelemetry().catch(() => {});
+  }
+
+  const syncUndo = parent.bindModuleUndo(document.getElementById('btnModuleUndo'),
+    document.getElementById('moduleUndoStatus'), 'm4', 'settings');
+  window.refreshData = (undoneAction) => {
+    LAB = parent.labRuntime;
+    syncUndo();
+    SAMPLES = LAB.samples;
+    CANDS = LAB.candidates;
+    document.querySelector('#samplePills .pill.active')?.click();
+    hydrateSettings(undoneAction !== 'settings').catch(() => {});
+    hydrateTelemetry().catch(() => {});
+  };
+  document.querySelector('#samplePills .pill')?.click();
+  updateRerank();
+  function loop(ts) {
+    const t = ts * 0.001;
+    drawChart1(t);
+    drawChart2(t);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

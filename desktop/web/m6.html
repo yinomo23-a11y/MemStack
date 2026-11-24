@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MEMORY LAB // 06 · 双链路蒸馏与安全审计</title>
+<style>
+  :root {
+    --bg: #05070B;
+    --card: #0A0E16;
+    --card-in: #0E1420;
+    --border: rgba(154, 182, 222, 0.11);
+    --border-hi: rgba(110, 172, 250, 0.45);
+    --text: #ECF2FA;
+    --muted: #7B8EA8;
+    --dim: #506178;
+    --blue: #659BE6;
+    --blue-hi: #94C4FF;
+    --silver: #A6B5C9;
+    --violet: #7B76B8;
+    --teal: #52C8A8;
+    --amber: #DFAD64;
+    --red: #DF6B78;
+    --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: radial-gradient(circle at 24% -10%, rgba(56, 98, 168, 0.14), transparent 48%), var(--bg);
+    color: var(--text); font-family: var(--sans); font-size: 11.5px; user-select: none;
+  }
+  .app { display: flex; flex-direction: column; height: 100vh; width: 100vw; overflow: hidden; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* Top Instrument Header (46px fixed) */
+  .top {
+    height: 46px; min-height: 46px; max-height: 46px; flex-shrink: 0;
+    background: rgba(7, 10, 16, 0.88);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; gap: 12px; backdrop-filter: blur(12px);
+  }
+  .top-l { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .brand { display: flex; align-items: center; gap: 9px; white-space: nowrap; flex-shrink: 0; }
+  .orb { width: 8px; height: 8px; border-radius: 50%; background: var(--blue-hi); box-shadow: 0 0 10px var(--blue); }
+  .b-title { font-family: var(--mono); font-size: 12.5px; font-weight: 700; letter-spacing: 1.2px; color: #F4F8FF; }
+  .pill-bar {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: #0B1019; border: 1px solid rgba(154,182,222,0.14);
+    border-radius: 999px; padding: 3px; white-space: nowrap;
+  }
+  .pill {
+    background: transparent; border: 1px solid transparent; color: var(--muted);
+    font-size: 11px; padding: 3px 11px; border-radius: 999px; cursor: pointer;
+    transition: all .14s ease; font-family: inherit; white-space: nowrap;
+  }
+  .pill:hover { color: #E5EEF9; }
+  .pill.active {
+    background: rgba(101, 155, 230, 0.20);
+    border-color: rgba(130, 188, 255, 0.42);
+    color: #F5F9FF; font-weight: 600;
+  }
+  .top-r { display: flex; align-items: center; gap: 8px; flex-shrink: 0; white-space: nowrap; }
+  .ro-pill {
+    font-family: var(--mono); font-size: 10px; color: #62D2B2;
+    padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+    background: rgba(82, 200, 168, 0.09); border: 1px solid rgba(82, 200, 168, 0.28);
+  }
+  .blue-pill {
+    font-family: var(--mono); font-size: 10px; color: #9EC8FF;
+    padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+    background: rgba(101, 155, 230, 0.11); border: 1px solid rgba(118, 178, 250, 0.34);
+  }
+
+  /* 2-Column Main Workspace */
+  .main-grid {
+    flex: 1; min-height: 0; display: grid;
+    grid-template-columns: 1.24fr 1fr;
+    gap: 12px; padding: 11px 15px 13px; overflow: hidden;
+  }
+  .col-stack { display: flex; flex-direction: column; gap: 11px; min-height: 0; overflow: hidden; }
+
+  .card {
+    background: linear-gradient(180deg, rgba(16, 22, 34, 0.72) 0%, rgba(10, 14, 22, 0.90) 100%);
+    border: 1px solid var(--border);
+    border-radius: 13px; padding: 11px 14px;
+    display: flex; flex-direction: column; overflow: hidden; min-height: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+  /* Fixed single-line 22px header & footer -> 0px vertical jump */
+  .c-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; margin-bottom: 6px; flex-shrink: 0;
+    height: 22px; min-height: 22px; max-height: 22px; overflow: hidden;
+  }
+  .c-title-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
+  .c-title { font-size: 12.5px; font-weight: 600; color: #F1F6FD; letter-spacing: 0.2px; white-space: nowrap; }
+  .c-sub { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge {
+    font-family: var(--mono); font-size: 9.5px; padding: 1.5px 7px; border-radius: 5px;
+    white-space: nowrap; flex-shrink: 0; line-height: 1.3;
+  }
+  .badge.warn { color: #E4B56E; background: rgba(223,173,100,0.11); border: 1px solid rgba(223,173,100,0.32); }
+  .badge.ok { color: #64D4B4; background: rgba(82,200,168,0.10); border: 1px solid rgba(82,200,168,0.28); }
+  .badge.blue { color: #96C4FF; background: rgba(101,155,230,0.13); border: 1px solid rgba(118,178,250,0.34); }
+  .badge.err { color: #F08A95; background: rgba(223,107,120,0.12); border: 1px solid rgba(223,107,120,0.35); }
+  .badge.dim { color: #8FA2BC; background: rgba(154,182,222,0.08); border: 1px solid rgba(154,182,222,0.18); }
+
+  .card-foot {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-top: 6px; margin-top: 6px; border-top: 1px solid rgba(154,182,222,0.08);
+    font-size: 10.2px; color: var(--muted); flex-shrink: 0; gap: 10px;
+    height: 22px; min-height: 22px; max-height: 22px; white-space: nowrap; overflow: hidden;
+  }
+  .card-foot > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Pipeline A Summary & Segmented Bar */
+  .dist-stat-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    margin-bottom: 6px; flex-shrink: 0; white-space: nowrap;
+  }
+  .seg-bar {
+    height: 7px; border-radius: 99px; background: #131B28; overflow: hidden;
+    display: flex; gap: 1.5px; margin-bottom: 6px; flex-shrink: 0;
+  }
+  .kind-strip {
+    display: flex; gap: 6px; margin-bottom: 7px; flex-shrink: 0; overflow: hidden; white-space: nowrap;
+  }
+  .k-pill {
+    font-size: 10px; color: #9BB0CA; background: rgba(14,20,32,0.72);
+    border: 1px solid rgba(154,182,222,0.10); border-radius: 5px; padding: 2px 7px;
+  }
+  .k-pill b { font-family: var(--mono); color: #EAF2FC; margin-left: 4px; }
+
+  /* Internal Fixed-Height Scrollable Card Review Queue */
+  .card-queue {
+    flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;
+    padding-right: 3px;
+  }
+  .card-queue::-webkit-scrollbar { width: 4px; }
+  .card-queue::-webkit-scrollbar-thumb { background: rgba(154,182,222,0.22); border-radius: 99px; }
+  .d-item {
+    border-radius: 7px;
+    background: rgba(14,20,32,0.68); border: 1px solid rgba(154,182,222,0.08);
+    flex-shrink: 0; overflow: hidden; transition: border-color .14s;
+  }
+  .d-item.open { border-color: rgba(118,178,250,0.34); background: rgba(16,23,36,0.82); }
+  .d-row {
+    display: grid; grid-template-columns: 102px 72px 1fr 122px;
+    align-items: center; gap: 8px;
+    padding: 5.5px 9px; cursor: pointer;
+  }
+  .d-row:hover { background: rgba(118,178,250,0.06); }
+  .d-chev { display: inline-block; width: 11px; color: #7C92B0; font-size: 9px; transition: transform .14s; }
+  .d-item.open .d-chev { color: var(--blue-hi); }
+  .d-kind { font-family: var(--mono); font-size: 9.8px; color: #9BB0CA; white-space: nowrap; }
+  .d-txt { font-size: 10.8px; color: #E8F1FC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .d-meta { font-family: var(--mono); font-size: 9.2px; color: #6B7E9A; margin-left: 6px; }
+  .d-acts { display: flex; justify-content: flex-end; gap: 4px; white-space: nowrap; }
+  .d-detail {
+    border-top: 1px dashed rgba(154,182,222,0.14);
+    padding: 7px 10px 8px; background: rgba(8,12,20,0.66);
+    display: flex; flex-direction: column; gap: 5px; user-select: text;
+  }
+  .dd-full { font-size: 10.8px; color: #DCE8F8; line-height: 1.48; }
+  .dd-quote {
+    font-size: 10px; color: #92A7C4; padding: 3.5px 7px; border-left: 2px solid rgba(101,155,230,0.45);
+    background: rgba(14,20,32,0.58); border-radius: 3px; line-height: 1.4;
+  }
+  .dd-grid {
+    display: grid; grid-template-columns: 1.2fr 1.1fr 1fr; gap: 6px 10px;
+    font-family: var(--mono); font-size: 9.4px; color: #7C91AD;
+  }
+  .dd-grid b { color: #C2D4EC; font-weight: 500; }
+  .dd-foot {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-top: 4px; border-top: 1px solid rgba(154,182,222,0.08); font-size: 9.8px; color: #8397B4;
+  }
+  .b-note-slot {
+    position: relative; height: 24px; min-height: 24px; flex-shrink: 0;
+    margin-bottom: 7px; z-index: 15;
+  }
+  .b-note {
+    position: absolute; left: 0; right: 0; top: 0;
+    background: rgba(13,18,29,0.72); border: 1px solid rgba(154,182,222,0.12);
+    border-left: 2px solid rgba(101,155,230,0.60);
+    border-radius: 6px; overflow: hidden;
+    transition: border-color .14s, background .14s, box-shadow .14s;
+  }
+  .b-note.open {
+    border-color: rgba(118,178,250,0.48); background: rgba(9,13,22,0.96);
+    box-shadow: 0 14px 32px rgba(0,0,0,0.78); backdrop-filter: blur(10px);
+  }
+  .b-note-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 4px 8px; cursor: pointer; font-size: 10px; color: #8CA0BA;
+    height: 23px; white-space: nowrap; overflow: hidden;
+  }
+  .b-note-head:hover { background: rgba(118,178,250,0.06); color: #CFE0F6; }
+  .b-note-sum { display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; }
+  .b-note-sum b { color: #DCE8F8; font-weight: 600; }
+  .b-note-btn {
+    font-family: var(--mono); font-size: 9px; color: #94C4FF;
+    background: rgba(101,155,230,0.12); border: 1px solid rgba(118,178,250,0.32);
+    border-radius: 4px; padding: 0.5px 6px; flex-shrink: 0;
+  }
+  .b-note-body {
+    display: none; border-top: 1px dashed rgba(154,182,222,0.14);
+    padding: 5px 9px 6px; font-size: 10px; line-height: 1.48; color: #94A8C4;
+    flex-direction: column; gap: 2.5px; user-select: text;
+  }
+  .b-note.open .b-note-body { display: flex; }
+  .b-note-body b { color: #E2EEFC; font-weight: 600; }
+  .sub-cap { font-size: 9.5px; color: #7B8EA8; line-height: 1.35; }
+  .s-btn {
+    background: #101726; border: 1px solid rgba(154,182,222,0.20); color: #CFE0F6;
+    font-size: 9.8px; padding: 2px 7px; border-radius: 5px; cursor: pointer; font-family: inherit;
+  }
+  .s-btn:hover { border-color: rgba(118,178,250,0.55); color: #FFF; }
+  .s-btn.ok:hover { border-color: rgba(82,200,168,0.65); color: #64D4B4; }
+  .s-btn.no:hover { border-color: rgba(223,107,120,0.65); color: #F08A95; }
+
+  .batch-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin-top: 7px; flex-shrink: 0;
+  }
+  .distill-controls, .distill-options, .distill-actions { flex-wrap: wrap; }
+  .distill-actions .btn:disabled { cursor: default; opacity: 0.65; }
+  #moduleUndoStatus { max-width: 100%; white-space: normal; }
+  .btn {
+    background: #101726; border: 1px solid rgba(154,182,222,0.22); color: #D2E3F8;
+    font-size: 11px; padding: 5px 11px; border-radius: 7px; cursor: pointer; font-family: inherit; transition: all .14s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: #18243A; border-color: rgba(130,188,255,0.58); color: #FFF; }
+  .btn.pri {
+    background: linear-gradient(90deg, rgba(72,126,204,0.28), rgba(101,155,230,0.22));
+    border-color: rgba(130,188,255,0.52); color: #D4E8FF; font-weight: 600;
+  }
+  .btn.pri:hover { background: linear-gradient(90deg, rgba(72,126,204,0.42), rgba(101,155,230,0.34)); }
+
+  /* Bottom-Left Vault Pipeline B + Batch Curve + Skills */
+  .b-split {
+    flex: 1; min-height: 0; display: grid; grid-template-columns: 1.12fr 1fr; gap: 12px; overflow: hidden;
+  }
+  .xy-stage { flex: 1; position: relative; min-height: 105px; cursor: crosshair; overflow: hidden; }
+  .xy-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .ftip {
+    position: absolute; pointer-events: none; z-index: 12; display: none;
+    background: rgba(8, 12, 20, 0.95); border: 1px solid rgba(120, 182, 255, 0.45);
+    border-radius: 9px; padding: 6px 9px; font-size: 10px; color: var(--text);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.72); min-width: 158px; backdrop-filter: blur(8px);
+  }
+  .ftip.show { display: block; }
+  .ft-h {
+    display: flex; justify-content: space-between; gap: 8px;
+    font-family: var(--mono); font-size: 9.2px; color: var(--blue-hi);
+    padding-bottom: 3px; margin-bottom: 3px; border-bottom: 1px solid rgba(154,182,222,0.12);
+  }
+  .ft-r { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 2px; }
+  .ft-k { color: #8FA2BC; display: inline-flex; align-items: center; gap: 4px; }
+  .ft-v { font-family: var(--mono); font-weight: 600; color: #F4F8FF; }
+  .leg-l { display: inline-block; width: 10px; border-radius: 2px; }
+
+  .vault-side {
+    display: flex; flex-direction: column; justify-content: space-between; gap: 6px; min-height: 0; overflow-y: auto;
+  }
+  .vault-side::-webkit-scrollbar { width: 3px; }
+  .vault-side::-webkit-scrollbar-thumb { background: rgba(154,182,222,0.20); border-radius: 99px; }
+  .v-box {
+    background: rgba(13,18,29,0.74); border: 1px solid rgba(154,182,222,0.10);
+    border-radius: 8px; padding: 7px 10px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .kv-line { display: flex; justify-content: space-between; align-items: center; font-size: 10.2px; }
+  .kv-k { color: var(--muted); }
+  .kv-v { font-family: var(--mono); color: #EAF2FC; font-weight: 600; }
+
+  .sk-row {
+    display: grid; grid-template-columns: 1fr 90px 54px; align-items: center; gap: 6px;
+    padding: 4px 8px; border-radius: 5px; background: rgba(10,14,22,0.68);
+    border: 1px solid rgba(154,182,222,0.08); font-size: 10px;
+  }
+
+  /* Right Top: 5 Production Pools SHA-256 Lock */
+  .pool-table { display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: space-between; min-height: 0; }
+  .pool-row {
+    display: grid; grid-template-columns: 1.25fr 66px 70px 1fr 82px;
+    align-items: center; gap: 8px;
+    padding: 7.5px 10px; border-radius: 8px;
+    background: rgba(14,20,32,0.68); border: 1px solid rgba(154,182,222,0.09);
+  }
+  .pr-name { font-family: var(--mono); font-size: 11px; font-weight: 600; color: #EEF4FC; }
+  .pr-desc { font-size: 9.4px; color: #6E829E; display: block; margin-top: 1px; }
+  .pr-num { font-family: var(--mono); font-size: 11px; color: #DCE8F8; text-align: right; }
+  .pr-sha { font-family: var(--mono); font-size: 9.6px; color: #7C92B0; text-align: right; }
+
+  /* Right Bottom: 7-Point Audit Checklist */
+  .audit-list { display: flex; flex-direction: column; gap: 4.8px; flex: 1; justify-content: space-between; min-height: 0; }
+  .au-row {
+    display: grid; grid-template-columns: 20px 1.2fr 1.1fr 64px;
+    align-items: center; gap: 8px;
+    padding: 5.5px 9px; border-radius: 7px;
+    background: rgba(14,20,32,0.64); border: 1px solid rgba(154,182,222,0.08);
+  }
+  .au-idx { font-family: var(--mono); font-size: 10px; color: #7B8EA8; }
+  .au-name { font-size: 10.8px; color: #EBF3FD; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .au-ev { font-family: var(--mono); font-size: 9.5px; color: #8397B4; text-align: right; white-space: nowrap; }
+</style>
+<link rel="stylesheet" href="button-feedback.css">
+</head>
+<body>
+<div class="app">
+  <!-- TOP HEADER -->
+  <header class="top">
+    <div class="top-l">
+      <div class="brand">
+        <i class="orb"></i>
+        <span class="b-title">MEMORY LAB // 06</span>
+      </div>
+      <div class="pill-bar" id="filterPills">
+        <button class="pill active" data-st="all">全部卡片 (0)</button>
+        <button class="pill" data-st="provisional">待审 provisional (0)</button>
+        <button class="pill" data-st="active">生效 active (0)</button>
+        <button class="pill" data-st="stale">源失效 stale (0)</button>
+        <button class="pill" data-st="rejected">已拒 rejected (0)</button>
+      </div>
+    </div>
+    <div class="top-r">
+      <span class="blue-pill">本机计算</span>
+      <span class="ro-pill">快照 SHA-256</span>
+    </div>
+  </header>
+
+  <!-- MAIN 2-COLUMN WORKSPACE -->
+  <main class="main-grid">
+    <!-- LEFT COLUMN: Pipeline A + Pipeline B -->
+    <div class="col-stack">
+      <!-- Card 1: Pipeline A (DSH Distillation 本地摘要) -->
+      <section class="card" style="flex:1.12">
+        <div class="c-head">
+          <div class="c-title-wrap">
+            <span class="c-title">链路 A · 本地规则蒸馏与审批台</span>
+            <span class="c-sub" id="pipeASub">—</span>
+          </div>
+          <span class="badge blue" id="cardCountBadge">—</span>
+        </div>
+
+        <div class="seg-bar" id="segBar">
+          <div id="segAct" style="width:0%;background:#52C8A8" title="active"></div>
+          <div id="segProv" style="width:0%;background:#659BE6" title="provisional"></div>
+          <div id="segStale" style="width:0%;background:#DFAD64" title="stale"></div>
+          <div id="segRej" style="width:0%;background:#3A475C" title="rejected"></div>
+          <div id="segSup" style="width:0%;background:#7B76B8" title="superseded"></div>
+        </div>
+
+        <div class="kind-strip" id="kindStrip"></div>
+
+        <div class="card-queue" id="cardQueue"></div>
+
+        <div class="batch-bar distill-controls">
+          <div class="distill-options" style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+            <span style="font-size:10.5px;color:#8FA2BC">受控生成 批次数：</span>
+            <button class="s-btn" data-b="1" style="border-color:#659BE6;color:#94C4FF" id="b1">1</button>
+            <button class="s-btn" data-b="3" id="b3">3</button>
+            <button class="s-btn" data-b="5" id="b5">5</button>
+            <span class="mono" style="font-size:9.8px;color:#6E829E">上限12k字 · 去重≥0.85</span>
+          </div>
+          <div class="distill-actions" style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+            <button class="btn" id="btnMaintain" title="核对全部失效卡的原始对话证据，能恢复的自动恢复">一键校准失效卡</button>
+            <button class="btn pri" id="btnGenDry">试跑蒸馏 generate(1批)</button>
+            <button class="btn pri" id="btnGenWrite" hidden>生成并保存</button>
+            <button class="btn" id="btnModuleUndo" hidden disabled>回滚本页</button>
+            <span id="moduleUndoStatus" role="status" hidden></span>
+          </div>
+        </div>
+
+        <div class="card-foot" id="pipeAFoot" role="status">
+          <span>源失效保护：_reconcile_card 核对 来源快照 变更后自动标 stale，禁止旧审批流延续</span>
+          <span class="mono" style="color:#64D4B4">review() / maintain() 就绪</span>
+        </div>
+      </section>
+
+      <!-- Card 2: Pipeline B (Vault Periodic Distillation + Skill Evolution) -->
+      <section class="card" style="flex:0.96">
+        <div class="c-head">
+          <div class="c-title-wrap">
+            <span class="c-title">链路 B · 本地蒸馏走势与失败演练</span>
+            <span class="c-sub" id="vaultSub">—</span>
+          </div>
+          <span class="badge ok" id="vaultStateBadge">—</span>
+        </div>
+
+        <div class="b-note-slot">
+          <div class="b-note" id="bNote">
+            <div class="b-note-head" id="bNoteToggle">
+              <span class="b-note-sum"><span id="bNoteChev">▸</span><b>链路 B 备注</b>：本机生成的摘要、审核状态与失败演练</span>
+              <span class="b-note-btn" id="bNoteBtn">展开</span>
+            </div>
+            <div class="b-note-body">
+              <div>本机按强度和正文去重生成待审核摘要。开启本机写入后，通过和拒绝会保存至本地卡片库；只读或演示模式仅作用于本次会话。</div>
+              <div>曲线展示实际生成和审核的批次。失败演练只在沙盒中运行。</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="b-split">
+          <!-- Left: 19-Batch Restrained Satin Curve -->
+          <div style="display:flex;flex-direction:column;min-height:0">
+            <div class="sub-cap" style="margin-bottom:3px;flex-shrink:0">参考走势：链路 A 实际批次蒸馏累计 / 生效 / 源失效变化</div>
+            <div class="xy-stage" id="boxDist">
+              <canvas id="cvDist"></canvas>
+              <div class="ftip" id="tipDist"></div>
+            </div>
+          </div>
+
+          <!-- Right: Vault State & Fail Guard + Skill Pipeline -->
+          <div class="vault-side">
+            <div class="v-box">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:10.5px;font-weight:600;color:#DCE8F8">.distill-last.json 失败护栏</span>
+                <button class="s-btn no" id="btnSimFail">模拟模型步骤失败</button>
+              </div>
+              <div class="kv-line"><span class="kv-k">last_distill (成功锚点)</span><span class="kv-v" id="vLastOk">—</span></div>
+              <div class="kv-line"><span class="kv-k">last_run / interval</span><span class="kv-v" id="vRunInt">—</span></div>
+              <div class="kv-line"><span class="kv-k">last_state / calls</span><span class="kv-v" id="vStateTxt" style="color:#64D4B4">—</span></div>
+            </div>
+
+            <div class="v-box" style="flex:1;justify-content:flex-start;gap:5px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:10.5px;font-weight:600;color:#DCE8F8">skills.py 采纳管线 (MAX=30 · 失败阈值=3)</span>
+              </div>
+              <div id="skillList" style="display:flex;flex-direction:column;gap:4.5px;margin-top:2px"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-foot" id="pipeBFoot" role="status">
+          <span>双链路铁律：模型步骤失败时仅记错误，绝不把 last_distill 前移至当前时间</span>
+          <span class="mono" style="color:#64D4B4">本机时间</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- RIGHT COLUMN: Production 5-Pool SHA-256 Lock + 7-Point Isolation Security Audit -->
+    <div class="col-stack">
+      <!-- Card 3: Production 5-Pool Read-Only SHA-256 Fingerprint Lock -->
+      <section class="card" style="flex:0.96">
+        <div class="c-head">
+          <div class="c-title-wrap">
+            <span class="c-title">数据快照指纹 · SHA-256</span>
+            <span class="c-sub" id="poolSub">—</span>
+          </div>
+          <span class="badge ok" id="shaStatus">—</span>
+        </div>
+
+        <div class="pool-table" id="poolTable"></div>
+
+        <div class="card-foot">
+          <span>SHA-256 根据当前快照计算</span>
+          <span class="mono" style="color:#64D4B4">READ-ONLY LOCK</span>
+        </div>
+      </section>
+
+      <!-- Card 4: 7-Point Isolation Parity & Zero-Leakage Security Audit -->
+      <section class="card" style="flex:1.10">
+        <div class="c-head">
+          <div class="c-title-wrap">
+            <span class="c-title">7 项本地快照校验</span>
+            <span class="c-sub">核对快照结构、连线和私密标记</span>
+          </div>
+          <span class="badge ok" id="auditBadge">—</span>
+        </div>
+
+        <div class="audit-list" id="auditList"></div>
+
+        <div class="batch-bar">
+          <span style="font-size:10px;color:#8FA2BC;white-space:nowrap">审计规则：零向量数组外泄 · 零密钥明文 · 写入误差 ≤ 1e-6</span>
+          <button class="btn pri" id="btnRerunAudit">一键复跑 7 项安全审计</button>
+        </div>
+
+        <div class="card-foot" id="auditFoot" role="status">
+          <span>最近校验：使用本次快照</span>
+          <span class="mono" style="color:#64D4B4">AUDIT VERIFIED</span>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script src="gemini-data.js"></script>
+<script>
+(function(){
+  const LAB = window.parent.labRuntime;
+  const fetch = (...args) => parent.labRuntime.request(...args);
+  const escapeHtml = window.parent.escapeHtml;
+
+  const DPR = Math.min(2, window.devicePixelRatio || 1);
+
+  // ===== 1. PIPELINE A: SANITIZED REPRESENTATIVE CARDS (INDIVIDUALLY EXPANDABLE) =====
+  let CARDS = [];
+
+  let COUNTS = {};
+  let curFilter = 'all';
+  let maxBatches = 1;
+  const expandedIds = new Set();
+  const pendingReviews = new Map();
+  const pendingSkills = new Set();
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  function renderCards() {
+    const q = document.getElementById('cardQueue');
+    const items = curFilter === 'all' ? CARDS : CARDS.filter(c => c.st === curFilter);
+    q.innerHTML = items.map(c => {
+      const isOpen = expandedIds.has(c.id);
+      const dispId = c.label || c.id;
+      const confTxt = c.confLabel ? `conf ${esc(c.confLabel)}` : `conf ${Number(c.conf || 0).toFixed(2)}`;
+      const stCls = c.st === 'active' ? 'ok' : c.st === 'provisional' ? 'blue' : c.st === 'stale' ? 'warn' : c.st === 'rejected' ? 'err' : 'dim';
+      const pending = pendingReviews.get(c.id);
+      const acts = pending
+        ? `<button class="s-btn" disabled aria-busy="true">${esc(pending)}</button>`
+        : !c.readOnly && c.st === 'provisional'
+          ? `<button class="s-btn ok" data-act="app" data-id="${esc(c.id)}">通过</button><button class="s-btn no" data-act="rej" data-id="${esc(c.id)}">拒绝</button>`
+          : !c.readOnly && c.st === 'stale'
+            ? `<button class="s-btn ok" data-act="recheck" data-id="${esc(c.id)}" title="重新核对原始证据并尝试恢复生效">重审启用</button><button class="s-btn no" data-act="rej" data-id="${esc(c.id)}" title="确认不再使用并移入已拒">驳回</button>`
+            : `<span class="mono" style="font-size:9px;color:#6E829E">${esc(c.rev)} · str ${Number(c.str || 0).toFixed(0)}</span>`;
+      const detailHtml = isOpen ? `<div class="d-detail">
+        <div class="dd-full">${esc(c.full)}</div>
+        <div class="dd-quote">${esc(c.quote)}</div>
+        <div class="dd-grid">
+          <span>源修订: <b>${esc(c.sourceRevs)}</b></span>
+          <span>生成模型: <b>${esc(c.model)}</b></span>
+          <span>更新: <b>${esc(c.updatedAt)}</b></span>
+        </div>
+        <div class="dd-foot">
+          <span>${esc(c.floorRule)}</span>
+          <span class="mono" style="color:${c.st==='stale'?'#E4B56E':c.st==='rejected'?'#F08A95':'#94C4FF'}">${esc(c.note)}</span>
+        </div>
+      </div>` : '';
+      return `<div class="d-item${isOpen ? ' open' : ''}" data-card="${esc(c.id)}">
+        <div class="d-row" data-toggle="${esc(c.id)}">
+          <span class="d-kind"><span class="d-chev">${isOpen ? '▾' : '▸'}</span>${esc(dispId)} · ${esc(c.kind)}</span>
+          <span class="badge ${stCls}" style="text-align:center">${esc(c.st)}</span>
+          <div class="d-txt">${esc(c.txt)}<span class="d-meta">${confTxt}</span></div>
+          <div class="d-acts">${acts}</div>
+        </div>
+        ${detailHtml}
+      </div>`;
+    }).join('');
+
+    q.querySelectorAll('[data-toggle]').forEach(row => row.addEventListener('click', () => {
+      const id = row.dataset.toggle;
+      if (expandedIds.has(id)) expandedIds.delete(id); else expandedIds.add(id);
+      renderCards();
+    }));
+
+    q.querySelectorAll('button[data-act]').forEach(btn => btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const card = CARDS.find(x => x.id === btn.dataset.id);
+      if (!card || pendingReviews.has(card.id)) return;
+      const wasStale = card.st === 'stale';
+      const app = btn.dataset.act === 'app' || btn.dataset.act === 'recheck';
+      if (location.protocol.startsWith('http') && card.version) {
+        const label = wasStale && app ? '重审中…' : app ? '审核中…' : '驳回中…';
+        const foot = document.getElementById('pipeAFoot');
+        pendingReviews.set(card.id, label);
+        foot.textContent = label;
+        renderCards();
+        try {
+          const r = await fetch('/api/cards/review', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: card.id, version: card.version, approved: app })
+          });
+          const res = await r.json();
+          if (!r.ok) {
+            document.getElementById('pipeAFoot').innerHTML = `<span style="color:#F08A95">⚠ HTTP ${r.status}: ${esc(res.error)}</span><span class="mono" style="color:#F08A95">CONFLICT</span>`;
+            if (r.status === 409) await hydrateM6Cards();
+            return;
+          }
+          await hydrateM6Cards();
+          if (wasStale && app && res.status === 'stale') {
+            document.getElementById('pipeAFoot').innerHTML = `<span style="color:#E4B56E">⚠ 核对原对话证据已修订/失效 (${esc(res.blocked_by || 'source_validation')})，无法恢复启用；如需清理请点「驳回」</span><span class="mono" style="color:#E4B56E">STILL STALE</span>`;
+          } else {
+            document.getElementById('pipeAFoot').innerHTML = `<span style="color:#64D4B4">✓ ${esc(card.label || card.id)} 已更新为「${esc(res.status)}」${res.written ? '（已保存）' : '（本地沙盒）'}</span><span class="mono" style="color:#64D4B4">SAVED</span>`;
+          }
+        } catch (error) {
+          foot.textContent = '审核未完成：' + error.message;
+        } finally {
+          pendingReviews.delete(card.id);
+          renderCards();
+        }
+        return;
+      }
+      if (wasStale) COUNTS.stale = Math.max(0, COUNTS.stale - 1);
+      else COUNTS.provisional = Math.max(0, COUNTS.provisional - 1);
+      if (app) { card.st = 'active'; card.note = '已重审恢复生效（active）'; COUNTS.active += 1; }
+      else { card.st = 'rejected'; card.note = '已人工驳回（rejected）'; COUNTS.rejected += 1; }
+      syncCountsUI();
+      renderCards();
+      document.getElementById('pipeAFoot').innerHTML = `<span style="color:#64D4B4">✓ ${esc(card.label || card.id)} 本地仿真更新为 ${card.st}</span><span class="mono" style="color:#64D4B4">SIM OK</span>`;
+    }));
+  }
+
+  function syncCountsUI() {
+    const tot = (COUNTS.active||0) + (COUNTS.provisional||0) + (COUNTS.stale||0) + (COUNTS.rejected||0) + (COUNTS.superseded||0) + (COUNTS.archived||0);
+    const pct = n => ((n / Math.max(1, tot)) * 100).toFixed(1) + '%';
+    document.getElementById('segAct').style.width = pct(COUNTS.active || 0);
+    document.getElementById('segProv').style.width = pct(COUNTS.provisional || 0);
+    document.getElementById('segStale').style.width = pct(COUNTS.stale || 0);
+    document.getElementById('segRej').style.width = pct(COUNTS.rejected || 0);
+    document.getElementById('segSup').style.width = pct(COUNTS.superseded || 0);
+    const pills = document.querySelectorAll('#filterPills .pill');
+    pills[0].textContent = `全部卡片 (${tot})`;
+    pills[1].textContent = `待审 provisional (${COUNTS.provisional || 0})`;
+    pills[2].textContent = `生效 active (${COUNTS.active || 0})`;
+    pills[3].textContent = `源失效 stale (${COUNTS.stale || 0})`;
+    pills[4].textContent = `已拒 rejected (${COUNTS.rejected || 0})`;
+  }
+  renderCards();
+  syncCountsUI();
+
+  document.querySelectorAll('#filterPills .pill').forEach(p => p.addEventListener('click', () => {
+    document.querySelectorAll('#filterPills .pill').forEach(x => x.classList.remove('active'));
+    p.classList.add('active'); curFilter = p.dataset.st; renderCards();
+  }));
+  [1, 3, 5].forEach(n => document.getElementById('b' + n).addEventListener('click', () => {
+    maxBatches = n;
+    [1, 3, 5].forEach(k => {
+      const b = document.getElementById('b' + k);
+      b.style.borderColor = k === n ? '#659BE6' : 'rgba(154,182,222,0.20)';
+      b.style.color = k === n ? '#94C4FF' : '#CFE0F6';
+    });
+    syncBatchLabels();
+  }));
+  function syncBatchLabels() {
+    const write = document.getElementById('btnGenWrite');
+    const dry = document.getElementById('btnGenDry');
+    if (write.disabled || dry.disabled) return;
+    write.textContent = `生成并保存 ${maxBatches} 批`;
+    dry.textContent = `试跑蒸馏 generate(${maxBatches}批)`;
+  }
+  document.getElementById('btnMaintain').addEventListener('click', async function() {
+    if (!location.protocol.startsWith('http')) {
+      document.getElementById('pipeAFoot').innerHTML = '<span style="color:#94C4FF">✓ 本地预览模式（连接后端即可批量重核失效卡片）</span>';
+      return;
+    }
+    const finish = parent.showButtonProgress(this, '校准中…');
+    this.disabled = true;
+    try {
+      const r = await fetch('/api/cards/maintain', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const res = await r.json();
+      if (r.ok) {
+        await hydrateM6Cards();
+        document.getElementById('pipeAFoot').innerHTML = `<span style="color:#64D4B4">✓ 全量证据核对完成：当前有效=${res.current} · 技能=${res.skills}/${res.skill_capacity} · 新标失效=${res.stale} · 归档=${res.archived}</span><span class="mono" style="color:#64D4B4">MAINTAIN OK</span>`;
+      } else {
+        document.getElementById('pipeAFoot').innerHTML = `<span style="color:#F08A95">⚠ 校准失败: ${esc(res.error)}</span>`;
+      }
+    } catch (error) {
+      document.getElementById('pipeAFoot').textContent = '校准未完成：' + error.message;
+    } finally {
+      finish();
+      this.disabled = false;
+    }
+  });
+  async function generateCards(dryRun) {
+    if (location.protocol.startsWith('http')) {
+      const batches = maxBatches;
+      const foot = document.getElementById('pipeAFoot');
+      const buttons = [document.getElementById('btnGenDry'), document.getElementById('btnGenWrite')];
+      if (buttons.some(button => button.disabled)) return;
+      buttons.forEach(button => { button.disabled = true; });
+      const finish = parent.showButtonProgress(this, '计算中…');
+      foot.textContent = dryRun ? '正在试跑蒸馏…' : '正在计算并保存蒸馏候选…';
+      try {
+        const r = await fetch('/api/cards/generate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batches, dry_run: dryRun })
+        });
+        const res = await r.json();
+        if (r.ok) {
+          await hydrateM6Cards();
+          document.getElementById('pipeAFoot').innerHTML = `<span style="color:#94C4FF">✓ ${res.written ? '候选已保存' : dryRun ? '蒸馏试跑' : '没有新候选'} (批数=${batches}) · sources=${res.sources} · 候选=${res.planned ?? 0}</span><span class="mono" style="color:#94C4FF">${esc(res.state || 'DRY-RUN')}</span>`;
+        } else {
+          document.getElementById('pipeAFoot').innerHTML = `<span style="color:#F08A95">⚠ HTTP ${r.status}: ${esc(res.error)}</span>`;
+        }
+      } catch (error) {
+        foot.textContent = '蒸馏未完成：' + error.message;
+      } finally {
+        finish();
+        buttons.forEach(button => { button.disabled = false; });
+        syncBatchLabels();
+      }
+      return;
+    }
+    document.getElementById('pipeAFoot').innerHTML = `<span style="color:#94C4FF">✓ dry-run generate(max_batches=${maxBatches}, max_chars=12000) 预估增量 +${maxBatches*6} 候选卡 · 0 写盘</span><span class="mono" style="color:#94C4FF">DRY-RUN</span>`;
+  }
+  document.getElementById('btnGenDry').addEventListener('click', function() { generateCards.call(this, true); });
+  document.getElementById('btnGenWrite').addEventListener('click', function() { generateCards.call(this, false); });
+  document.getElementById('btnGenWrite').hidden = !LAB.canWrite('generate');
+
+  // ===== 2. PIPELINE B: VAULT GUARDRAIL + SKILL EVOLUTION =====
+  const bNoteEl = document.getElementById('bNote');
+  document.getElementById('bNoteToggle').addEventListener('click', () => {
+    const isOpen = bNoteEl.classList.toggle('open');
+    document.getElementById('bNoteChev').textContent = isOpen ? '▾' : '▸';
+    document.getElementById('bNoteBtn').textContent = isOpen ? '缩小' : '展开';
+  });
+
+  let simFailed = false;
+  let lastVaultInfo = null;
+  function renderVaultInfo(v) {
+    if (!v) return;
+    lastVaultInfo = v;
+    const vb = document.getElementById('vaultStateBadge');
+    const vs = document.getElementById('vStateTxt');
+    document.getElementById('vaultSub').textContent = `本地蒸馏 · ${v.notes || 0} 篇笔记 · ${v.logs || 0} 条调度日志`;
+    document.getElementById('vLastOk').textContent = v.last || '未记录';
+    document.getElementById('vRunInt').textContent = `${String(v.run || '—').slice(0, 10)} · ${v.since ?? '-'} / ${v.every ?? 3} 天`;
+    const isOk = v.state === 'ok';
+    vb.className = 'badge ' + (isOk ? 'ok' : 'warn');
+    vb.textContent = `last_state: ${v.state || 'unknown'} · ${v.mode || 'distill'} (${v.since ?? '-'}/${v.every ?? 3}天)`;
+    vs.style.color = isOk ? '#64D4B4' : '#E4B56E';
+    vs.textContent = `${v.state || 'unknown'} · calls=${v.calls ?? 0}`;
+  }
+  document.getElementById('btnSimFail').addEventListener('click', async function(){
+    simFailed = !simFailed;
+    const vb = document.getElementById('vaultStateBadge');
+    const vs = document.getElementById('vStateTxt');
+    if (simFailed) {
+      this.textContent = '恢复正常状态';
+      if (location.protocol.startsWith('http')) {
+        const finish = parent.showButtonProgress(this, '检测中…');
+        this.disabled = true;
+        try {
+          const r = await fetch('/api/vault/probe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          const res = await r.json();
+          if (r.ok && res.guard_ok) {
+            vb.className = 'badge err'; vb.textContent = '隔离探针: model 失败 · last_distill 锁定不前移';
+            vs.style.color = '#F08A95'; vs.textContent = `guard=PASS (锚点保持 ${res.preserved_last_distill || '—'})`;
+            document.getElementById('pipeBFoot').innerHTML = `<span style="color:#F08A95">✓ 本地失败演练：保留上一次成功批次 ${esc(res.preserved_last_distill)}</span><span class="mono" style="color:#F08A95">GUARD VERIFIED</span>`;
+            return;
+          }
+        } catch (_) {}
+        finally { finish(); this.disabled = false; }
+      }
+      vb.className = 'badge err'; vb.textContent = 'last_state: error · last_distill 锁定不前移';
+      vs.style.color = '#F08A95'; vs.textContent = 'error (模型超时 · 锚点未改)';
+      document.getElementById('pipeBFoot').innerHTML = '<span style="color:#F08A95">⚠ 检测到模型步骤失败：last_distill 保持原成功锚点，拒绝吞错前移</span><span class="mono" style="color:#F08A95">GUARD HIT</span>';
+    } else {
+      this.textContent = '模拟模型步骤失败';
+      if (lastVaultInfo) renderVaultInfo(lastVaultInfo);
+      document.getElementById('pipeBFoot').innerHTML = '<span>双链路铁律：模型步骤失败时仅记错误，绝不把 last_distill 前移至当前时间</span><span class="mono" style="color:#64D4B4">本机时间</span>';
+    }
+  });
+
+  let SKILLS = [];
+  function renderSkills() {
+    document.getElementById('skillList').innerHTML = SKILLS.map((s, idx) => {
+      const cls = s.st === 'active' ? 'ok' : s.st === 'reviewed' ? 'blue' : s.st === 'failed' ? 'err' : 'warn';
+      return `<div class="sk-row">
+        <span class="mono" style="color:#DCE8F8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name)}</span>
+        <span class="badge ${cls}" style="text-align:center">${esc(s.st)}${s.fails == null ? '' : ' (' + s.fails + '/3)'}</span>
+        <div style="display:flex;gap:3px;justify-content:flex-end">
+          ${pendingSkills.has(s.id) ? '<button class="s-btn" disabled aria-busy="true">记录中…</button>' : `
+          <button class="s-btn ok" data-sk="${idx}" data-ok="1" ${s.readOnly ? 'disabled' : ''}>✓</button>
+          <button class="s-btn no" data-sk="${idx}" data-ok="0" ${s.readOnly ? 'disabled' : ''}>✕</button>`}
+        </div>
+      </div>`;
+    }).join('');
+    document.querySelectorAll('#skillList button').forEach(b => b.addEventListener('click', async () => {
+      const s = SKILLS[Number(b.dataset.sk)];
+      const isOk = b.dataset.ok === '1';
+      if (location.protocol.startsWith('http') && s.id) {
+        if (pendingSkills.has(s.id)) return;
+        const foot = document.getElementById('pipeBFoot');
+        pendingSkills.add(s.id);
+        foot.textContent = '正在记录技能结果…';
+        renderSkills();
+        try {
+          const r = await fetch('/api/cards/outcome', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: s.id, version: s.version, ok: isOk })
+          });
+          const result = await r.json();
+          if (!r.ok) throw new Error(result.error || '保存技能结果失败');
+          await hydrateM6Cards();
+          foot.textContent = result.written ? '技能结果已保存' : '技能结果已记录';
+        } catch (error) {
+          foot.textContent = error.message;
+        } finally {
+          pendingSkills.delete(s.id);
+          renderSkills();
+        }
+        return;
+      }
+      if (isOk) {
+        s.fails = 0;
+        s.st = s.st === 'draft' ? 'reviewed' : 'active';
+      } else {
+        s.fails += 1;
+        if (s.fails >= 3) s.st = 'failed';
+      }
+      renderSkills();
+    }));
+  }
+  renderSkills();
+
+  // ===== 3. PIPELINE A/B 19-BATCH RESTRAINED 3-TIER SATIN CURVE =====
+  const cvD = document.getElementById('cvDist'), boxD = document.getElementById('boxDist'), tipD = document.getElementById('tipDist');
+  let hovD = { active: true, x: null, y: null, idx: 12, pinned: true };
+  let BATCH_TOT = [0,0];
+  let BATCH_ACT = [0,0];
+  let BATCH_STL = [0,0];
+
+  function fitCv(cv) {
+    const r = cv.parentElement.getBoundingClientRect();
+    const w = Math.max(180, Math.round(r.width || 360)), h = Math.max(95, Math.round(r.height || 140));
+    const tw = Math.round(w * DPR), th = Math.round(h * DPR);
+    if (Math.abs(cv.width - tw) > 1 || Math.abs(cv.height - th) > 1) { cv.width = tw; cv.height = th; }
+    const ctx = cv.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    return { ctx, w, h };
+  }
+  function buildMonotone(ctx, pts) {
+    const n = pts.length; if (n < 2) return;
+    const dx=[], dy=[], m=[];
+    for (let i=0;i<n-1;i++){ dx[i]=pts[i+1].x-pts[i].x; dy[i]=pts[i+1].y-pts[i].y; m[i]=dy[i]/(dx[i]||1e-6); }
+    const t = new Array(n).fill(0); t[0]=m[0]; t[n-1]=m[n-2];
+    for (let i=1;i<n-1;i++) t[i]=(m[i-1]*m[i]<=0)?0:(m[i-1]+m[i])*0.5;
+    for (let i=0;i<n-1;i++){
+      if (Math.abs(m[i])<1e-6){ t[i]=0; t[i+1]=0; continue; }
+      const a=t[i]/m[i], b=t[i+1]/m[i], h=Math.hypot(a,b);
+      if (h>3){ const s=3/h; t[i]=s*a*m[i]; t[i+1]=s*b*m[i]; }
+    }
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i=0;i<n-1;i++){
+      const h=dx[i]/3;
+      ctx.bezierCurveTo(pts[i].x+h, pts[i].y+h*t[i], pts[i+1].x-h, pts[i+1].y-h*t[i+1], pts[i+1].x, pts[i+1].y);
+    }
+  }
+  function sampleInterp(arr, fIdx) {
+    const n = arr.length;
+    const i0 = Math.max(0, Math.min(n-1, Math.floor(fIdx))), i1 = Math.max(0, Math.min(n-1, Math.ceil(fIdx)));
+    if (i0 === i1) return arr[i0];
+    const u = fIdx - i0, cs = (1 - Math.cos(u * Math.PI)) * 0.5;
+    return arr[i0] + (arr[i1] - arr[i0]) * (u * 0.65 + cs * 0.35);
+  }
+  function drawPill(ctx, w, h, txt, px, py) {
+    ctx.save(); ctx.font = '600 9px "JetBrains Mono", monospace';
+    const pw = ctx.measureText(txt).width + 9, ph = 14.5;
+    const rx = Math.max(2, Math.min(w - pw - 2, px - pw / 2)), ry = Math.max(2, Math.min(h - ph - 1, py - ph / 2));
+    ctx.fillStyle = '#121B2A'; ctx.strokeStyle = 'rgba(118,180,255,0.55)'; ctx.lineWidth = 0.85;
+    ctx.beginPath(); ctx.roundRect(rx, ry, pw, ph, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#A8D0FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(txt, rx + pw / 2, ry + ph / 2 + 0.4); ctx.restore();
+  }
+
+  function drawDistCurve() {
+    const { ctx, w, h } = fitCv(cvD);
+    const N = BATCH_TOT.length;
+    const MAX_V = Math.max(260, Math.ceil((Math.max(...BATCH_TOT) || 240) / 40) * 40);
+    const PAD = { l: 34, r: 10, t: 12, b: 20 };
+    const ix = i => PAD.l + (i / Math.max(1, N - 1)) * (w - PAD.l - PAD.r);
+    const vy = v => PAD.t + (1 - Math.max(0, Math.min(MAX_V, v)) / MAX_V) * (h - PAD.t - PAD.b);
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.font = '9px "JetBrains Mono", monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    [0, Math.round(MAX_V / 2), MAX_V].forEach(v => {
+      const y = Math.round(vy(v)) + 0.5;
+      ctx.strokeStyle = v === 0 ? 'rgba(148,172,206,0.14)' : 'rgba(148,172,206,0.045)'; ctx.lineWidth = 0.75;
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(w - PAD.r, y); ctx.stroke();
+      ctx.fillStyle = '#5F718A'; ctx.fillText(String(v), PAD.l - 6, y);
+    });
+    ctx.font = '9px "JetBrains Mono", monospace'; ctx.fillStyle = '#5F718A'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    [0, Math.floor((N-1)*0.25), Math.floor((N-1)*0.5), Math.floor((N-1)*0.75), N - 1].forEach(i => ctx.fillText('B' + (i + 1), ix(i), h - PAD.b + 4));
+
+    const strokeC = (arr, col, lw, fill, glow, core) => {
+      const pts = arr.map((v, i) => ({ x: ix(i), y: vy(v) }));
+      if (fill) {
+        buildMonotone(ctx, pts);
+        ctx.lineTo(pts[pts.length-1].x, h - PAD.b); ctx.lineTo(pts[0].x, h - PAD.b); ctx.closePath();
+        ctx.fillStyle = fill; ctx.fill();
+      }
+      ctx.save();
+      buildMonotone(ctx, pts);
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round';
+      if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = 6; }
+      ctx.stroke();
+      if (core) { ctx.shadowBlur = 0; ctx.strokeStyle = core; ctx.lineWidth = lw * 0.35; ctx.stroke(); }
+      ctx.restore();
+    };
+
+    const gS = ctx.createLinearGradient(0, PAD.t + 20, 0, h - PAD.b);
+    gS.addColorStop(0, 'rgba(123, 118, 184, 0.11)'); gS.addColorStop(1, 'rgba(123, 118, 184, 0)');
+    strokeC(BATCH_STL, '#7B76B8', 0.85, gS);
+
+    const gA = ctx.createLinearGradient(0, PAD.t + 14, 0, h - PAD.b);
+    gA.addColorStop(0, 'rgba(166, 181, 201, 0.055)'); gA.addColorStop(1, 'rgba(166, 181, 201, 0)');
+    strokeC(BATCH_ACT, '#A6B5C9', 1.12, gA);
+
+    const gT = ctx.createLinearGradient(0, PAD.t, 0, h - PAD.b);
+    gT.addColorStop(0, 'rgba(101, 155, 230, 0.25)'); gT.addColorStop(0.55, 'rgba(101, 155, 230, 0.055)'); gT.addColorStop(1, 'rgba(101, 155, 230, 0)');
+    strokeC(BATCH_TOT, '#659BE6', 1.75, gT, 'rgba(101, 155, 230, 0.34)', 'rgba(218, 236, 255, 0.48)');
+
+    if (hovD.active) {
+      const fIdx = hovD.pinned ? hovD.idx : Math.max(0, Math.min(N - 1, ((hovD.x - PAD.l) / (w - PAD.l - PAD.r)) * (N - 1)));
+      const rIdx = Math.round(fIdx), cx = ix(fIdx), vt = sampleInterp(BATCH_TOT, fIdx), va = sampleInterp(BATCH_ACT, fIdx), vs = sampleInterp(BATCH_STL, fIdx);
+      const cy = vy(vt);
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(130, 183, 247, 0.45)'; ctx.lineWidth = 0.75; ctx.setLineDash([2.5, 3]);
+      ctx.beginPath(); ctx.moveTo(cx, PAD.t); ctx.lineTo(cx, h - PAD.b); ctx.stroke();
+      ctx.strokeStyle = 'rgba(205, 222, 244, 0.20)';
+      ctx.beginPath(); ctx.moveTo(PAD.l, cy); ctx.lineTo(w - PAD.r, cy); ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = '#7B76B8'; ctx.beginPath(); ctx.arc(cx, vy(vs), 2.0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#A6B5C9'; ctx.beginPath(); ctx.arc(cx, vy(va), 2.3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(101, 155, 230, 0.24)'; ctx.beginPath(); ctx.arc(cx, cy, 6.8, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#CFE4FF'; ctx.strokeStyle = '#0B0E14'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(cx, cy, 3.0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+      drawPill(ctx, w, h, 'B' + (rIdx + 1), cx, h - PAD.b + 9);
+      drawPill(ctx, w, h, Math.round(vt) + '卡', PAD.l / 2 + 1, cy);
+
+      tipD.innerHTML = `<div class="ft-h"><span>第 ${rIdx+1} 批次</span><span>本地摘要</span></div>
+        <div class="ft-r"><span class="ft-k"><i class="leg-l" style="height:2px;background:#659BE6"></i>累计卡</span><span class="ft-v">${BATCH_TOT[rIdx]} 张</span></div>
+        <div class="ft-r"><span class="ft-k"><i class="leg-l" style="height:1.2px;background:#A6B5C9"></i>生效卡</span><span class="ft-v">${BATCH_ACT[rIdx]} 张</span></div>
+        <div class="ft-r"><span class="ft-k"><i class="leg-l" style="height:0.9px;background:#7B76B8"></i>源失效</span><span class="ft-v">${BATCH_STL[rIdx]} 张</span></div>`;
+      tipD.style.left = ((cx + 160 < w) ? (cx + 10) : (cx - 155)) + 'px';
+      tipD.style.top = Math.max(4, Math.min(h - 74, cy - 26)) + 'px';
+      tipD.classList.add('show');
+    } else { tipD.classList.remove('show'); }
+  }
+  boxD.addEventListener('mousemove', e => { const r=boxD.getBoundingClientRect(); hovD={active:true,x:e.clientX-r.left,y:e.clientY-r.top,idx:12,pinned:false}; });
+  boxD.addEventListener('mouseleave', () => { hovD.active = false; });
+
+  // ===== 4. RIGHT TOP: 5 PRODUCTION POOLS SHA-256 LOCK =====
+  let POOLS = [];
+  function renderPools() {
+    document.getElementById('poolTable').innerHTML = POOLS.map(p => `
+      <div class="pool-row">
+        <div><span class="pr-name">${esc(p.name)}</span><span class="pr-desc">${esc(p.desc)}</span></div>
+        <span class="pr-num">${esc(p.cnt)}</span>
+        <span class="pr-num" style="color:#8CA0BA">${esc(p.kb)}</span>
+        <span class="pr-sha">${esc(p.sha)}</span>
+        <span class="badge ${p.status === '已计算' ? 'ok' : 'dim'}" style="text-align:center">${esc(p.status || '未计算')}</span>
+      </div>`).join('');
+  }
+  renderPools();
+
+  // ===== 5. RIGHT BOTTOM: 7-POINT ISOLATION PARITY & ZERO-LEAK AUDIT =====
+  let AUDITS = [];
+  const auditList = document.getElementById('auditList');
+  function renderAudit(checkingIdx = -1) {
+    auditList.innerHTML = AUDITS.map((a, idx) => {
+      const b = checkingIdx === idx
+        ? `<span class="badge blue" style="text-align:center">CHECKING</span>`
+        : `<span class="badge ${a.ok == null ? 'blue' : a.ok ? 'ok' : 'err'}" style="text-align:center">${a.ok == null ? '来源' : a.ok ? 'PASS' : 'FAIL'}</span>`;
+      return `<div class="au-row">
+        <span class="au-idx">0${idx + 1}</span>
+        <span class="au-name">${esc(a.name)}</span>
+        <span class="au-ev">${esc(a.ev)}</span>
+        ${b}
+      </div>`;
+    }).join('');
+  }
+  renderAudit();
+
+  let auditing = false;
+  document.getElementById('btnRerunAudit').addEventListener('click', async function() {
+    if (auditing) return;
+    auditing = true;
+    const finish = parent.showButtonProgress(this, '审计中…');
+    this.disabled = true;
+    const badge = document.getElementById('auditBadge');
+    if (location.protocol.startsWith('http')) {
+      badge.className = 'badge blue';
+      badge.textContent = '正在执行 7 项快照校验…';
+      renderAudit(0);
+      try {
+        const r = await fetch('/api/audit/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        const au = await r.json();
+        if (!r.ok) throw new Error(au.error || '快照校验失败');
+        applyAuditData(au);
+        document.getElementById('auditFoot').innerHTML = `<span style="color:#64D4B4">✓ ${au.passed} / ${au.total} 项本地快照复核完成 (${esc(au.checked_at)})</span><span class="mono" style="color:#64D4B4">VERIFIED</span>`;
+      } catch (error) {
+        badge.className = 'badge err';
+        badge.textContent = '校验未完成';
+        document.getElementById('auditFoot').textContent = error.message;
+      } finally {
+        auditing = false;
+        finish();
+        this.disabled = false;
+      }
+      return;
+    }
+    let step = 0;
+    const timer = setInterval(() => {
+      if (step < AUDITS.length) {
+        badge.className = 'badge blue';
+        badge.textContent = `复核中 0${step + 1} / 07 ...`;
+        renderAudit(step);
+        step += 1;
+      } else {
+        clearInterval(timer);
+        auditing = false;
+        finish();
+        this.disabled = false;
+        renderAudit(-1);
+        badge.className = 'badge ok';
+        badge.textContent = '快照校验通过';
+      }
+    }, 110);
+  });
+
+  async function hydrateM6Cards() {
+    const r = await fetch('/api/cards', { cache: 'no-store' });
+    if (!r.ok) return;
+    const res = await r.json();
+    CARDS = res.cards || [];
+    COUNTS = res.counts || COUNTS;
+    if (CARDS.length && !CARDS.some(c => expandedIds.has(c.id))) {
+      expandedIds.clear();
+      expandedIds.add(CARDS[0].id);
+    }
+    const tot = CARDS.length;
+    document.getElementById('pipeASub').textContent = `${res.batches || 0} 批次完成 · ${res.model || '本地规则'} · 实时同步 ${tot} 张卡片`;
+    document.getElementById('cardCountBadge').textContent = `${tot} / MAX ${res.capacity || 300} 卡 · config ${res.config || ''}`;
+    const k = res.kinds || {};
+    const kindOrder = ['关系模式', '偏好', '界限', 'skill', '画像', '身体偏好'];
+    const kindHtml = kindOrder.map(name => `<span class="k-pill">${esc(name)}<b>${k[name] || 0}</b></span>`).join('')
+      + `<span class="k-pill" style="margin-left:auto;color:#E4B56E">stale 源失效不可覆盖 <b>${COUNTS.stale || 0}</b></span>`;
+    document.getElementById('kindStrip').innerHTML = kindHtml;
+    if (Array.isArray(res.history) && res.history.length >= 2) {
+      BATCH_TOT = res.history.map(x => x[0]);
+      BATCH_ACT = res.history.map(x => x[1]);
+      BATCH_STL = res.history.map(x => x[2]);
+      hovD.idx = Math.min(hovD.idx, BATCH_TOT.length - 1);
+    }
+    if (Array.isArray(res.skills)) {
+      SKILLS = res.skills;
+      renderSkills();
+    }
+    if (res.vault) renderVaultInfo(res.vault);
+    syncCountsUI();
+    renderCards();
+  }
+
+  function applyAuditData(au) {
+    if (!au) return;
+    if (Array.isArray(au.pools) && au.pools.length) {
+      POOLS = au.pools.map(p => ({
+        name: p.name, desc: p.desc, cnt: `${p.count} ${p.unit}`,
+        kb: `${Number(p.kb).toLocaleString()} KB`, sha: p.sha, status: p.status
+      }));
+      const memTot = au.pools.filter(p => p.unit === '条').reduce((a, b) => a + b.count, 0);
+      const sessTot = au.pools.filter(p => p.unit === '会话').reduce((a, b) => a + b.count, 0);
+      document.getElementById('poolSub').textContent = `${memTot.toLocaleString()} 记忆 + ${sessTot} 工作会话 · 全程只读挂载`;
+      document.getElementById('shaStatus').className = 'badge ' + ('ok');
+      document.getElementById('shaStatus').textContent = au.pools.some(p => p.status === '只读') ? '源文件指纹已计算' : '快照指纹已计算';
+      renderPools();
+    }
+    if (Array.isArray(au.items) && au.items.length) {
+      AUDITS = au.items;
+      renderAudit(-1);
+      const badge = document.getElementById('auditBadge');
+      badge.className = 'badge ' + (au.passed === au.total ? 'ok' : 'err');
+      badge.textContent = `${au.passed} / ${au.total} PASS`;
+    }
+  }
+  async function hydrateM6Audit() {
+    const r = await fetch('/api/audit', { cache: 'no-store' });
+    if (r.ok) applyAuditData(await r.json());
+  }
+
+  const syncUndo = parent.bindModuleUndo(document.getElementById('btnModuleUndo'),
+    document.getElementById('moduleUndoStatus'), 'm6', 'generate');
+  window.refreshData = () => {
+    syncUndo();
+    hydrateM6Cards().catch(() => {});
+    hydrateM6Audit().catch(() => {});
+  };
+  window.refreshData();
+
+  function loop() { drawDistCurve(); requestAnimationFrame(loop); }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

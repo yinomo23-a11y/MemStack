@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MEMORY TOWER · 模块 03 电影级 GPU 3D 螺旋光幕五层地板塔</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #020407; color: #E5EDF8;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    user-select: none;
+  }
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #hudCanvas { cursor: grab; z-index: 4; }
+  #hudCanvas.dragging { cursor: grabbing; }
+
+  .top-hud {
+    position: fixed; top: 0; left: 0; right: 0; height: 50px; z-index: 12;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 18px; pointer-events: none;
+    background: linear-gradient(180deg, rgba(2,4,8,0.84) 0%, rgba(2,4,8,0) 100%);
+  }
+  .top-hud > * { pointer-events: auto; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .orb { width: 8px; height: 8px; border-radius: 50%; background: #85C0FF; box-shadow: 0 0 12px #659BE6, 0 0 3px #FFF; }
+  .b-title { font-size: 12.5px; font-weight: 700; letter-spacing: 1px; color: #EFF5FF; }
+  .b-meta {
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 9.8px; color: #7F93B0;
+    padding: 2px 7px; border-radius: 4px; background: rgba(10,15,24,0.72); border: 1px solid rgba(148,178,216,0.16);
+  }
+  .top-acts { display: flex; align-items: center; gap: 8px; }
+  .hud-btn {
+    background: rgba(10,15,24,0.78); border: 1px solid rgba(148,178,216,0.22);
+    color: #CFE0F5; font-size: 11px; padding: 5px 11px; border-radius: 999px;
+    cursor: pointer; backdrop-filter: blur(10px); transition: all .14s; font-family: inherit;
+  }
+  .hud-btn:hover { border-color: rgba(130,188,255,0.62); color: #FFF; background: rgba(20,34,56,0.86); }
+  .hud-btn.pri { background: rgba(96,154,235,0.18); border-color: rgba(130,188,255,0.48); color: #B4D7FF; font-weight: 600; }
+  .ro-badge {
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 10px; color: #67D6B8;
+    padding: 4px 9px; border-radius: 999px;
+    background: rgba(78,196,168,0.09); border: 1px solid rgba(78,196,168,0.28);
+  }
+
+  /* Left Search & Floor Control Rail */
+  .left-rail {
+    position: fixed; left: 16px; top: 62px; z-index: 10; width: 244px;
+    background: rgba(7, 10, 16, 0.78); border: 1px solid rgba(148,178,216,0.16);
+    border-radius: 10px; padding: 10px 11px; backdrop-filter: blur(12px);
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .rail-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 9.5px; color: #7E92AE; letter-spacing: 0.5px;
+  }
+  .search-wrap { position: relative; display: flex; align-items: center; }
+  .search-inp {
+    width: 100%; background: rgba(4,7,13,0.90); border: 1px solid rgba(148,178,216,0.24);
+    border-radius: 6px; color: #EDF4FF; font-size: 11px; padding: 6px 26px 6px 9px;
+    outline: none; font-family: inherit;
+  }
+  .search-inp:focus { border-color: rgba(130,188,255,0.68); }
+  .search-inp::placeholder { color: #647792; }
+  .search-clr {
+    position: absolute; right: 6px; background: none; border: none; color: #7C90AB;
+    font-size: 13px; cursor: pointer; display: none;
+  }
+  .search-clr.show { display: block; }
+  .search-res {
+    display: none; flex-direction: column; gap: 3px; max-height: 155px; overflow-y: auto;
+    padding-top: 2px; border-top: 1px solid rgba(148,178,216,0.10);
+  }
+  .search-res.show { display: flex; }
+  .sr-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    padding: 4.5px 7px; border-radius: 5px; cursor: pointer;
+    background: rgba(14,21,34,0.65); border: 1px solid transparent; font-size: 10.8px;
+  }
+  .sr-item:hover, .sr-item.active { background: rgba(101,155,230,0.20); border-color: rgba(130,188,255,0.48); }
+  .sr-m { font-family: "JetBrains Mono", Consolas, monospace; font-size: 9.5px; color: #8AC2FF; }
+
+  .floor-list { display: flex; flex-direction: column; gap: 3px; }
+  .fl-btn {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4.5px 8px; border-radius: 5px; cursor: pointer;
+    background: rgba(13,18,28,0.65); border: 1px solid rgba(148,178,216,0.12);
+    color: #B4C5DC; font-size: 10.5px; transition: all .13s;
+  }
+  .fl-btn:hover, .fl-btn.active { background: rgba(101,155,230,0.18); border-color: rgba(130,188,255,0.50); color: #F4F9FF; }
+  .fl-dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; display: inline-block; }
+  .fl-c { font-family: "JetBrains Mono", Consolas, monospace; font-size: 9.5px; color: #7C90AB; }
+  .mini-ctrl { display: flex; gap: 5px; }
+  .mini-ctrl button {
+    flex: 1; background: rgba(14,20,32,0.8); border: 1px solid rgba(148,178,216,0.16);
+    color: #B4C5DC; font-size: 10px; padding: 4px 0; border-radius: 5px; cursor: pointer; font-family: inherit;
+  }
+  .mini-ctrl button:hover { border-color: rgba(130,188,255,0.5); color: #FFF; }
+
+  /* Right Closable 2-Hop & Hybrid Rerank Theater Card */
+  .right-card {
+    position: fixed; right: 16px; top: 62px; z-index: 10; width: 288px;
+    background: rgba(7, 10, 16, 0.80); border: 1px solid rgba(148,178,216,0.16);
+    border-radius: 10px; padding: 11px 12px; backdrop-filter: blur(12px);
+    display: flex; flex-direction: column; gap: 8px; transition: opacity .2s, transform .2s;
+  }
+  .right-card.hidden { opacity: 0; pointer-events: none; transform: translateX(16px); }
+  .rc-top { display: flex; justify-content: space-between; align-items: center; }
+  .rc-title { font-size: 12.5px; font-weight: 600; color: #F2F7FF; }
+  .rc-close { background: none; border: none; color: #7C8FA8; font-size: 15px; cursor: pointer; }
+  .rc-close:hover { color: #FFF; }
+  .chain-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 7px; border-radius: 4px; background: rgba(13,19,30,0.78);
+    border-left: 2.5px solid #659BE6; font-size: 10.5px; cursor: pointer;
+  }
+  .chain-item:hover { background: rgba(24,36,56,0.85); }
+  .score-row { margin-top: 4px; }
+  .score-lbl { display: flex; justify-content: space-between; font-size: 10px; color: #C8D7EA; margin-bottom: 2.5px; }
+  .score-bar { height: 6px; border-radius: 99px; background: #131B28; overflow: hidden; display: flex; gap: 1px; }
+
+  .bot-strip {
+    position: fixed; left: 16px; right: 16px; bottom: 14px; z-index: 10;
+    background: rgba(6, 9, 15, 0.78); border: 1px solid rgba(148,178,216,0.14);
+    border-radius: 10px; padding: 8px 14px; backdrop-filter: blur(10px);
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 10.2px; color: #9BB0C9;
+  }
+  .leg { display: flex; gap: 14px; align-items: center; }
+  .leg i { display: inline-block; width: 10px; height: 2px; vertical-align: middle; margin-right: 5px; }
+</style>
+<link rel="stylesheet" href="button-feedback.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="glCanvas"></canvas>
+  <canvas id="hudCanvas"></canvas>
+</div>
+
+<div class="top-hud">
+  <div class="brand">
+    <i class="orb"></i>
+    <span class="b-title">MEMORY TOWER // 03</span>
+    <span class="b-meta" id="topMeta">加载真实记忆分层中...</span>
+  </div>
+  <div class="top-acts">
+    <span class="ro-badge">只读</span>
+    <button class="hud-btn pri" id="btnWake">❄ 触发垂直唤醒动效</button>
+    <button class="hud-btn" id="btnCard">2跳剧场</button>
+  </div>
+</div>
+
+<div class="left-rail">
+  <div class="rail-head"><span>1:1 FLOOR SEARCH</span><span style="color:#8AC2FF" id="fpsOut">60 FPS</span></div>
+  <div class="search-wrap">
+    <input class="search-inp" id="qInp" placeholder="搜索记忆或标签…" aria-label="搜索记忆或标签" autocomplete="off" />
+    <button class="search-clr" id="qClr">×</button>
+  </div>
+  <div class="search-res" id="qRes"></div>
+  <div class="floor-list" id="floorBtns"></div>
+  <div class="mini-ctrl">
+    <button id="btnSpin">自转：开</button>
+    <button id="btnReset">重置视角</button>
+  </div>
+</div>
+
+<div class="right-card" id="rightCard">
+  <div class="rc-top">
+    <span class="rc-title" id="rcTitle">2 跳链式联想 · -</span>
+    <button class="rc-close" id="rcClose">×</button>
+  </div>
+  <div style="font-size:10px;color:#7C90AB;font-family:'JetBrains Mono',monospace">基于记录的共享实体 · 最多 2 跳</div>
+  <div id="chainBox" style="display:flex;flex-direction:column;gap:4px"></div>
+  <div style="border-top:1px solid rgba(148,178,216,0.12);padding-top:7px">
+    <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:#EAF2FF;margin-bottom:4px">
+      <span>关联记录强度</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#8AC2FF">记录值</span>
+    </div>
+    <div id="rerankBox"></div>
+  </div>
+</div>
+
+<div class="bot-strip">
+  <span id="feedTxt">正在载入记忆快照…</span>
+  <div class="leg">
+    <span><i style="background:#46D69C"></i>共享实体标签</span>
+    <span style="color:#6E829E" id="flowStat">1:1 丝光流 -</span>
+  </div>
+</div>
+
+<script src="frame-data.js"></script>
+<script>
+(function(){
+  const glCanvas = document.getElementById('glCanvas');
+  const hudCanvas = document.getElementById('hudCanvas');
+  const hud = hudCanvas.getContext('2d');
+  let W = 0, H = 0, DPR = Math.min(2, window.devicePixelRatio || 1);
+
+  let seed = 2026112177;
+  function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
+
+  // 4x4 Matrix Math
+  function mat4Perspective(fovRad, aspect, near, far) {
+    const f = 1.0 / Math.tan(fovRad * 0.5), nf = 1.0 / (near - far);
+    return new Float32Array([f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0]);
+  }
+  function mat4LookAt(eye, target, up) {
+    let zx=eye[0]-target[0], zy=eye[1]-target[1], zz=eye[2]-target[2];
+    let zl=Math.hypot(zx,zy,zz)||1; zx/=zl; zy/=zl; zz/=zl;
+    let xx=up[1]*zz-up[2]*zy, xy=up[2]*zx-up[0]*zz, xz=up[0]*zy-up[1]*zx;
+    let xl=Math.hypot(xx,xy,xz)||1; xx/=xl; xy/=xl; xz/=xl;
+    let yx=zy*xz-zz*xy, yy=zz*xx-zx*xz, yz=zx*xy-zy*xx;
+    return new Float32Array([
+      xx,yx,zx,0, xy,yy,zy,0, xz,yz,zz,0,
+      -(xx*eye[0]+xy*eye[1]+xz*eye[2]),
+      -(yx*eye[0]+yy*eye[1]+yz*eye[2]),
+      -(zx*eye[0]+zy*eye[1]+zz*eye[2]), 1
+    ]);
+  }
+  function mat4Mul(a, b) {
+    const o = new Float32Array(16);
+    for (let i=0;i<4;i++) for (let j=0;j<4;j++) o[j*4+i]=a[i]*b[j*4]+a[4+i]*b[j*4+1]+a[8+i]*b[j*4+2]+a[12+i]*b[j*4+3];
+    return o;
+  }
+
+  // ===== REAL MEMORY SNAPSHOT (STRICT 1:1 FLOOR NODES & 1:1 SILK FLOWS) =====
+  const SNAP = window.MEMORY_SNAPSHOT;
+  if (!SNAP || !Array.isArray(SNAP.items) || SNAP.items.length === 0) {
+    document.getElementById('feedTxt').textContent = '暂无可显示的记忆。';
+    return;
+  }
+  const RAW_ITEMS = SNAP.items;
+  const N_MEM = RAW_ITEMS.length;
+
+
+  const FLOORS = [
+    { idx:0, y: 1.04, r: 1.20, cnt: SNAP.tower_tiers[0], col:[0.26, 0.86, 0.62], hex:'#46D69C', lbl: '' },
+    { idx:1, y: 0.62, r: 1.50, cnt: SNAP.tower_tiers[1], col:[0.86, 0.36, 0.78], hex:'#D864CC', lbl: '' },
+    { idx:2, y: 0.18, r: 1.66, cnt: SNAP.tower_tiers[2], col:[0.32, 0.62, 1.00], hex:'#569CFF', lbl: '' },
+    { idx:3, y:-0.24, r: 1.56, cnt: SNAP.tower_tiers[3], col:[0.54, 0.42, 0.98], hex:'#8C70F8', lbl: '' },
+    { idx:4, y:-0.66, r: 1.36, cnt: SNAP.tower_tiers[4], col:[0.90, 0.68, 0.30], hex:'#E0AE50', lbl: '' },
+    { idx:5, y:-1.06, r: 1.14, cnt: SNAP.tower_tiers[5], col:[0.42, 0.56, 0.72], hex:'#6C8AA8', lbl: '' }
+  ];
+
+  // Deterministically distribute all N_MEM memories cleanly onto concentric tracks of their exact tower floor
+  FLOORS.forEach(floor => { floor.lbl = SNAP.towerLabels[floor.idx] || '未接入'; });
+  const floorSlots = [[], [], [], [], [], []];
+  RAW_ITEMS.forEach(m => { floorSlots[m.tw].push(m.i); });
+  const floorSlotIdx = new Int32Array(N_MEM);
+  floorSlots.forEach(arr => arr.forEach((mIdx, k) => { floorSlotIdx[mIdx] = k; }));
+
+  function nodePosOnFloor(m) {
+    const fl = FLOORS[m.tw];
+    const total = Math.max(1, fl.cnt);
+    const k = floorSlotIdx[m.i];
+    const tracks = total > 240 ? 4 : total > 100 ? 3 : total > 30 ? 2 : 1;
+    const tr = k % tracks;
+    const perTrack = Math.ceil(total / tracks);
+    const kInTr = Math.floor(k / tracks);
+    const ang = (kInTr / perTrack) * Math.PI * 2 + m.tw * 0.41 + tr * (Math.PI / perTrack);
+    const r = fl.r + (tr - (tracks - 1) * 0.5) * 0.056;
+    return [Math.cos(ang) * r, fl.y, Math.sin(ang) * r, ang, r, tracks];
+  }
+
+  const NODES = RAW_ITEMS.map(m => {
+    const [x, y, z, ang, rad, tracks] = nodePosOnFloor(m);
+    const fl = FLOORS[m.tw];
+    const pName = m.label;
+    const kw = [m.t, m.id, m.k, pName, fl.lbl, ...(m.en||[]), ...(m.tg||[])].join(' ').toLowerCase();
+    return {
+      id: m.i, memId: m.id, m, f: m.tw, pos: [x, y, z], ang, rad, tracks,
+      title: m.t, badge: pName + ' · ' + m.strengthLabel, kw
+    };
+  });
+
+  // ===== WEBGL SETUP =====
+  const gl = glCanvas.getContext('webgl', { alpha: false, antialias: false, powerPreference: 'high-performance' });
+  if (!gl) {
+    document.getElementById('topMeta').textContent = '当前设备无法渲染 WebGL，可使用流转矩阵。';
+    return;
+  }
+  function compile(type, src) {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error('SHADER:', gl.getShaderInfoLog(s));
+    return s;
+  }
+  function makeProg(vs, fs) {
+    const p = gl.createProgram(); gl.attachShader(p, compile(gl.VERTEX_SHADER, vs)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error('LINK:', gl.getProgramInfoLog(p));
+    return p;
+  }
+
+  // ---- SHADER 1: STRICT 1:1 REAL MEMORY SPECTRAL SILK WINGS (N_MEM FILAMENTS!) ----
+  const SILK_VS = `
+    precision highp float;
+    attribute vec3 aPos;
+    attribute vec3 aCol;
+    attribute float aAlong;
+    attribute float aSeed;
+    attribute float aFloor;
+    attribute float aMatch;
+    uniform mat4 uMVP;
+    uniform float uTime;
+    uniform float uFocusFloor;
+    uniform float uDim;
+    uniform float uSearchActive;
+    varying vec3 vCol;
+    varying float vAlong;
+    varying float vSeed;
+    varying float vAlpha;
+    void main() {
+      float rot = uTime * 0.10;
+      float c = cos(rot), s = sin(rot);
+      vec3 p = vec3(aPos.x * c - aPos.z * s, aPos.y, aPos.x * s + aPos.z * c);
+      gl_Position = uMVP * vec4(p, 1.0);
+      float fBoost = (uFocusFloor < -0.5) ? 1.0 : ((abs(aFloor - uFocusFloor) < 0.3) ? 1.95 : 0.10);
+      float mBoost = (uSearchActive > 0.5) ? ((aMatch > 0.5) ? 1.65 : 0.08) : 1.0;
+      vCol = mix(aCol, vec3(0.86, 0.95, 1.0), (uSearchActive > 0.5 && aMatch > 0.5) ? 0.35 : 0.0);
+      vAlong = aAlong;
+      vSeed = aSeed;
+      vAlpha = fBoost * mBoost * mix(uDim, 1.0, aMatch);
+    }
+  `;
+  const SILK_FS = `
+    precision highp float;
+    uniform float uTime;
+    varying vec3 vCol;
+    varying float vAlong;
+    varying float vSeed;
+    varying float vAlpha;
+    void main() {
+      float w = fract(vAlong * 0.9 - uTime * (0.24 + vSeed * 0.18) + vSeed * 4.0);
+      float k = max(0.0, 1.0 - abs(w - 0.5) * 6.5);
+      float k2 = k * k;
+      float spark = k2 * k2;
+      float fadeEnds = max(0.0, sin(vAlong * 3.14159));
+      float a = (0.165 + spark * 0.44) * (0.45 + 0.55 * fadeEnds) * vAlpha;
+      vec3 col = mix(vCol, vec3(0.96, 0.99, 1.0), spark * 0.52);
+      gl_FragColor = vec4(col * clamp(a, 0.0, 1.3), clamp(a, 0.0, 1.0));
+    }
+  `;
+
+  // ---- SHADER 2: STRICT 1:1 REAL MEMORY 3D SLABS (N_MEM SLABS) + ORBITAL RING RAILS ----
+  const SLAB_VS = `
+    precision highp float;
+    attribute vec3 aPos;
+    attribute vec3 aCol;
+    attribute float aFloor;
+    attribute float aBright;
+    attribute float aMatch;
+    uniform mat4 uMVP;
+    uniform float uTime;
+    uniform float uFocusFloor;
+    uniform float uDim;
+    uniform float uSearchActive;
+    varying vec3 vCol;
+    varying float vAlpha;
+    void main() {
+      float rot = uTime * 0.10;
+      float c = cos(rot), s = sin(rot);
+      vec3 p = vec3(aPos.x * c - aPos.z * s, aPos.y, aPos.x * s + aPos.z * c);
+      gl_Position = uMVP * vec4(p, 1.0);
+      float fBoost = (uFocusFloor < -0.5) ? 1.0 : ((abs(aFloor - uFocusFloor) < 0.3) ? 1.45 : 0.16);
+      float mBoost = (uSearchActive > 0.5) ? ((aMatch > 0.5) ? 1.55 : 0.12) : 1.0;
+      vCol = mix(aCol, vec3(1.0), (uSearchActive > 0.5 && aMatch > 0.5) ? 0.30 : 0.0);
+      vAlpha = clamp(aBright * fBoost * mBoost * max(0.32, mix(uDim, 1.0, aMatch)), 0.0, 1.0);
+    }
+  `;
+  const SLAB_FS = `precision highp float; varying vec3 vCol; varying float vAlpha; void main(){ gl_FragColor = vec4(vCol * vAlpha, vAlpha); }`;
+
+  // ---- SHADER 3: 4,200-PARTICLE LUMINOUS WHITE DOUBLE-HELIX CENTRAL SPINE + AWAKENING VORTEX ----
+  const HELIX_VS = `
+    precision highp float;
+    attribute vec3 aPos;
+    attribute vec3 aCol;
+    attribute float aSize;
+    attribute float aSeed;
+    attribute float aType; // 0 = central helix, 1 = cold awakening vortex
+    uniform mat4 uMVP;
+    uniform float uTime;
+    uniform float uDpr;
+    uniform float uWake;
+    uniform vec2 uWakePos;
+    varying vec3 vCol;
+    varying float vAlpha;
+    void main() {
+      vec3 p = aPos;
+      float alphaMul = 1.0;
+      if (aType < 0.5) {
+        float rot = -uTime * 0.55;
+        float c = cos(rot), s = sin(rot);
+        p = vec3(p.x * c - p.z * s, p.y, p.x * s + p.z * c);
+      } else {
+        float prog = fract(uWake + aSeed * 0.25);
+        p.y = -1.06 + prog * 1.28;
+        float a = prog * 12.0 + uTime * 3.0 + aSeed * 6.28;
+        float rr = 0.03 + (1.0 - prog) * 0.06;
+        p.x = uWakePos.x + cos(a) * rr;
+        p.z = uWakePos.y + sin(a) * rr;
+        alphaMul = sin(prog * 3.14159) * 1.4;
+      }
+      vec4 clip = uMVP * vec4(p, 1.0);
+      gl_Position = clip;
+      float dep = clamp(4.8 / max(0.8, clip.w), 0.4, 2.2);
+      gl_PointSize = clamp(aSize * dep * uDpr, 1.2, 12.0);
+      vCol = aCol;
+      vAlpha = clamp((0.35 + 0.60 * aSeed) * alphaMul, 0.0, 1.0);
+    }
+  `;
+  const HELIX_FS = `
+    precision highp float;
+    varying vec3 vCol; varying float vAlpha;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = length(uv) * 2.0; if (d > 1.0) discard;
+      float core = exp(-d * d * 16.0);
+      float k = max(0.0, 1.0 - d);
+      float halo = k * k * k * 0.35;
+      float I = core + halo;
+      gl_FragColor = vec4(mix(vCol, vec3(1.0), core * 0.65) * I * vAlpha, I * vAlpha);
+    }
+  `;
+
+  // ---- SHADER 4: DUAL-SCALE HDR BLOOM + ACES FILMIC COMPOSITE ----
+  const QUAD_VS = `attribute vec2 aPos; varying vec2 vUv; void main(){ vUv=aPos*0.5+0.5; gl_Position=vec4(aPos,0.0,1.0); }`;
+  const BRIGHT_FS = `
+    precision highp float; uniform sampler2D uTex; varying vec2 vUv;
+    void main(){ vec3 c=texture2D(uTex,vUv).rgb; float l=dot(c,vec3(0.2126,0.7152,0.0722)); gl_FragColor=vec4(c*smoothstep(0.14,0.82,l)*1.18,1.0); }
+  `;
+  const BLUR_FS = `
+    precision highp float; uniform sampler2D uTex; uniform vec2 uDir; varying vec2 vUv;
+    void main(){
+      vec3 s=texture2D(uTex,vUv).rgb*0.227027;
+      s+=texture2D(uTex,vUv+uDir*1.384615).rgb*0.316216; s+=texture2D(uTex,vUv-uDir*1.384615).rgb*0.316216;
+      s+=texture2D(uTex,vUv+uDir*3.230769).rgb*0.070270; s+=texture2D(uTex,vUv-uDir*3.230769).rgb*0.070270;
+      gl_FragColor=vec4(s,1.0);
+    }
+  `;
+  const COMP_FS = `
+    precision highp float;
+    uniform sampler2D uScene, uBloomT, uBloomW; varying vec2 vUv;
+    void main(){
+      vec2 d=(vUv-vec2(0.50,0.48))*vec2(1.4,1.0);
+      vec3 bg=mix(vec3(0.014,0.022,0.036), vec3(0.004,0.006,0.010), smoothstep(0.0,0.95,length(d)));
+      vec3 col=bg + texture2D(uScene,vUv).rgb*1.02 + texture2D(uBloomT,vUv).rgb*0.58 + texture2D(uBloomW,vUv).rgb*0.62;
+      col=(col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14);
+      gl_FragColor=vec4(clamp(col,0.0,1.0),1.0);
+    }
+  `;
+
+  let progSilk, progSlab, progHelix, progBright, progBlur, progComp;
+  let bufQuad, bufSilk, bufSilkMatch, bufSlabs, bufSlabMatch, bufRings, bufHelix;
+  let cntSilk=0, cntSlabs=0, cntRings=0, cntHelix=0;
+  let fboScene, fboH1, fboH2, fboQ1, fboQ2;
+
+  function makeFBO(w, h) {
+    const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    const fbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0);
+    const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    return { fbo, tex, w, h, ok };
+  }
+  function rebuildFBOs() {
+    if (!gl) return;
+    [fboScene,fboH1,fboH2,fboQ1,fboQ2].forEach(f => { if (f) { gl.deleteFramebuffer(f.fbo); gl.deleteTexture(f.tex); } });
+    const w=Math.max(64, glCanvas.width), h=Math.max(64, glCanvas.height);
+    fboScene = makeFBO(w, h);
+    fboH1 = makeFBO(Math.max(4,w>>1), Math.max(4,h>>1)); fboH2 = makeFBO(Math.max(4,w>>1), Math.max(4,h>>1));
+    fboQ1 = makeFBO(Math.max(4,w>>2), Math.max(4,h>>2)); fboQ2 = makeFBO(Math.max(4,w>>2), Math.max(4,h>>2));
+  }
+
+  function buildGeometry() {
+    // 1. STRICT 1:1 REAL MEMORY SPECTRAL SILK WINGS: EXACTLY N_MEM FILAMENTS (1 PER MEMORY!)
+    const silk = [];
+    const silkSegs = 16;
+    const silkMatch = new Float32Array(N_MEM * silkSegs * 2);
+    const spectralPalette = [
+      [0.86, 0.28, 0.78],
+      [0.54, 0.34, 0.96],
+      [0.26, 0.64, 1.00],
+      [0.24, 0.86, 0.62],
+      [0.92, 0.72, 0.28]
+    ];
+    NODES.forEach((nd, idx) => {
+      const m = nd.m, fl = FLOORS[m.tw];
+      const [sx, sy, sz] = nd.pos;
+      const ang = nd.ang;
+      const wingCol = spectralPalette[(idx + m.tw * 2) % spectralPalette.length];
+      const strW = 0.45 + (m.s / 100) * 0.55;
+      const blendCol = [
+        (fl.col[0] * 0.55 + wingCol[0] * 0.45) * strW,
+        (fl.col[1] * 0.55 + wingCol[1] * 0.45) * strW,
+        (fl.col[2] * 0.55 + wingCol[2] * 0.45) * strW
+      ];
+      const frac = ((idx % 29) / 28) - 0.5;
+      const sd = 0.25 + (m.s / 100) * 0.65;
+      const ty = Math.max(-1.14, Math.min(1.14, sy + frac * 0.85 + (rnd() - 0.5) * 0.12));
+      const tAng = ang + frac * 0.75;
+      const tx = Math.cos(tAng) * 0.20, tz = Math.sin(tAng) * 0.20;
+      const cx = sx * 0.48 + Math.cos(ang + frac * 0.45) * 0.20;
+      const cy = sy * 0.68 + ty * 0.32;
+      const cz = sz * 0.48 + Math.sin(ang + frac * 0.45) * 0.20;
+      const cr = Math.min(1, blendCol[0] + frac * 0.16);
+      const cg = Math.min(1, blendCol[1] - frac * 0.10);
+      const cb = Math.min(1, blendCol[2] + (0.25 - Math.abs(frac)) * 0.22);
+
+      let px = sx, py = sy, pz = sz;
+      const baseV = idx * silkSegs * 2;
+      for (let g = 1; g <= silkSegs; g++) {
+        const u = g / silkSegs, inv = 1 - u;
+        const nx = inv*inv*sx + 2*inv*u*cx + u*u*tx;
+        const ny = inv*inv*sy + 2*inv*u*cy + u*u*ty;
+        const nz = inv*inv*sz + 2*inv*u*cz + u*u*tz;
+        silk.push(px,py,pz, cr,cg,cb, (g-1)/silkSegs, sd, m.tw,
+                  nx,ny,nz, cr,cg,cb, g/silkSegs,     sd, m.tw);
+        silkMatch[baseV + (g - 1) * 2] = 1.0;
+        silkMatch[baseV + (g - 1) * 2 + 1] = 1.0;
+        px = nx; py = ny; pz = nz;
+      }
+    });
+    cntSilk = silk.length / 9; // cntSilk / 32 === N_MEM strictly 1:1!
+    bufSilk = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufSilk);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(silk), gl.STATIC_DRAW);
+    bufSilkMatch = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufSilkMatch);
+    gl.bufferData(gl.ARRAY_BUFFER, silkMatch, gl.DYNAMIC_DRAW);
+
+    // 2. STRICT 1:1 REAL MEMORY 3D ORBITAL NODE SLABS (EXACTLY N_MEM SLABS ON 6 TIERS!)
+    const sl = [];
+    const slMatch = new Float32Array(N_MEM * 6);
+    NODES.forEach((nd, idx) => {
+      const m = nd.m, fl = FLOORS[m.tw];
+      const [x, y, z] = nd.pos;
+      const ang = nd.ang;
+      const rx = Math.cos(ang), rz = Math.sin(ang);
+      const tx = -rz, tz = rx;
+      const perTr = Math.max(8, Math.ceil(fl.cnt / nd.tracks));
+      const hw = Math.max(0.011, Math.min(0.058, ((Math.PI * 2 * fl.r) / perTr) * 0.34));
+      const hl = nd.tracks >= 3 ? 0.016 : 0.024;
+      const p0=[x-tx*hw-rx*hl, y, z-tz*hw-rz*hl];
+      const p1=[x+tx*hw-rx*hl, y, z+tz*hw-rz*hl];
+      const p2=[x+tx*hw+rx*hl, y, z+tz*hw+rz*hl];
+      const p3=[x-tx*hw+rx*hl, y, z-tz*hw+rz*hl];
+      const br = 0.55 + (m.s / 100) * 0.45;
+      const col = [0.68 + fl.col[0]*0.30, 0.72 + fl.col[1]*0.26, 0.80 + fl.col[2]*0.20];
+      const push = p => sl.push(p[0],p[1],p[2], col[0],col[1],col[2], m.tw, br);
+      push(p0); push(p1); push(p2);
+      push(p0); push(p2); push(p3);
+      for (let v = 0; v < 6; v++) slMatch[idx * 6 + v] = 1.0;
+    });
+    cntSlabs = sl.length / 8; // cntSlabs / 6 === N_MEM strictly 1:1!
+    bufSlabs = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufSlabs);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(sl), gl.STATIC_DRAW);
+    bufSlabMatch = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufSlabMatch);
+    gl.bufferData(gl.ARRAY_BUFFER, slMatch, gl.DYNAMIC_DRAW);
+
+    // 3. 6 CONCENTRIC PRECISION ORBITAL RING RAILS
+    const rg = [];
+    FLOORS.forEach((fl, fi) => {
+      const segs = 140;
+      for (let i = 0; i < segs; i++) {
+        const a0=(i/segs)*Math.PI*2, a1=((i+1)/segs)*Math.PI*2;
+        rg.push(Math.cos(a0)*fl.r, fl.y, Math.sin(a0)*fl.r, 0.68,0.78,0.90, fi, 0.34,
+                Math.cos(a1)*fl.r, fl.y, Math.sin(a1)*fl.r, 0.68,0.78,0.90, fi, 0.34);
+        rg.push(Math.cos(a0)*(fl.r-0.09), fl.y, Math.sin(a0)*(fl.r-0.09), fl.col[0],fl.col[1],fl.col[2], fi, 0.18,
+                Math.cos(a1)*(fl.r-0.09), fl.y, Math.sin(a1)*(fl.r-0.09), fl.col[0],fl.col[1],fl.col[2], fi, 0.18);
+      }
+    });
+    cntRings = rg.length / 8;
+    bufRings = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufRings);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(rg), gl.STATIC_DRAW);
+
+    // 4. 4,200-PARTICLE LUMINOUS WHITE DOUBLE-HELIX CENTRAL SPINE + 260 COLD-AWAKENING VORTEX SPARKS!
+    const hx = [];
+    // Double helix vertical ribbon strands + crisp dotted spiral rungs
+    const turns = 7.5;
+    for (let i = 0; i < 1600; i++) {
+      const u = i / 1599;
+      const y = -1.24 + u * 2.48;
+      const a = u * Math.PI * 2 * turns;
+      const rad = 0.21 + Math.sin(u * Math.PI) * 0.03;
+      const s = i % 2;
+      const aa = a + s * Math.PI;
+      hx.push(Math.cos(aa)*rad, y, Math.sin(aa)*rad, 0.94, 0.97, 1.0, 2.0 + rnd()*1.4, rnd(), 0.0);
+    }
+    // Delicate dotted horizontal spiral rungs between the two helixes (creates exact dotted ladder texture!)
+    for (let r = 0; r < 90; r++) {
+      const u = r / 89;
+      const y = -1.20 + u * 2.40;
+      const a = u * Math.PI * 2 * turns;
+      const rad = 0.21 + Math.sin(u * Math.PI) * 0.03;
+      for (let d = 0; d < 18; d++) {
+        const f = (d / 17) * 2 - 1;
+        hx.push(Math.cos(a)*rad*f, y, Math.sin(a)*rad*f, 0.85, 0.92, 1.0, 1.4, 0.5 + rnd()*0.5, 0.0);
+      }
+    }
+    // Subtle halo dust around spine
+    for (let i = 0; i < 900; i++) {
+      const y = (rnd() - 0.5) * 2.4;
+      const a = rnd() * Math.PI * 2, rad = 0.06 + rnd() * 0.28;
+      hx.push(Math.cos(a)*rad, y, Math.sin(a)*rad, 0.72, 0.84, 1.0, 1.1 + rnd()*1.0, rnd()*0.6, 0.0);
+    }
+    // 260 rising Cold-Awakening Vortex sparks (aType = 1.0)
+    for (let i = 0; i < 260; i++) {
+      hx.push(0, 0, 0, 0.56, 0.84, 1.0, 2.2 + rnd()*2.2, rnd(), 1.0);
+    }
+    cntHelix = hx.length / 9;
+    bufHelix = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufHelix);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(hx), gl.STATIC_DRAW);
+  }
+
+  function initWebGL() {
+    if (!gl) return;
+    progSilk = makeProg(SILK_VS, SILK_FS);
+    progSlab = makeProg(SLAB_VS, SLAB_FS);
+    progHelix = makeProg(HELIX_VS, HELIX_FS);
+    progBright = makeProg(QUAD_VS, BRIGHT_FS);
+    progBlur = makeProg(QUAD_VS, BLUR_FS);
+    progComp = makeProg(QUAD_VS, COMP_FS);
+    bufQuad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufQuad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+    buildGeometry();
+  }
+
+  function bindA(p, n, sz, st, of) { const l=gl.getAttribLocation(p,n); if(l>=0){ gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,sz,gl.FLOAT,false,st,of); } }
+  function drawQuad(p, tex, fn) {
+    gl.disable(gl.BLEND); gl.useProgram(p); gl.bindBuffer(gl.ARRAY_BUFFER, bufQuad);
+    const l=gl.getAttribLocation(p,'aPos'); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,2,gl.FLOAT,false,0,0);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+    if (fn) fn(); gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+
+  // ===== CAMERA, SEARCH & 2-HOP REAL MEMORY UI STATE =====
+  const cam = { yaw: 0.25, pitch: 0.30, dist: 4.35, tyaw: 0.25, tpitch: 0.30, tdist: 4.35 };
+  let autoSpin = true, dragging = false, focusFloor = -1, wakeProg = 0.2, wakeFast = 0;
+  let FEATURED_IDS = new Set(), coldWakeNode = null, selFeat = null;
+  let searchQ = '', matchIds = new Set(), dimVal = 1.0, targetDim = 1.0, lastMVP = null;
+
+  const REASON_META = [
+    ['语义关联', '#569CFF', 1],
+    ['±3d 时间 +0.12', '#E0AE50', 1],
+    ['共享实体 +0.10', '#46D69C', 1]
+  ];
+
+  function getRealLinks(nd) {
+    const out = [];
+    const seen = new Set([nd.id]);
+    (nd.m.lk || []).slice(0, 3).forEach(([tid, rType, w]) => {
+      if (tid >= 0 && tid < N_MEM && !seen.has(tid)) {
+        seen.add(tid);
+        const [lbl, col, hop] = REASON_META[rType] || REASON_META[0];
+        out.push([tid, `${lbl} · ${(w || 0.7).toFixed(2)}`, col, hop, w || 0.72]);
+      }
+    });
+    // Add 1 true 2-hop transitive neighbor (HOP_DECAY = 0.6) from hop-1 seed
+    if (out.length > 0) {
+      const h1 = NODES[out[0][0]];
+      const h2 = (h1.m.lk || []).find(([tid2]) => tid2 >= 0 && tid2 < N_MEM && !seen.has(tid2));
+      if (h2) {
+        const [tid2, r2, w2] = h2;
+        const [lbl2, col2] = REASON_META[r2] || REASON_META[2];
+        out.push([tid2, `2跳×0.6 · ${lbl2.slice(0,4)}`, col2, 2, (w2 || 0.7) * 0.6]);
+      }
+    }
+    return out;
+  }
+
+  function syncMatchBuffers() {
+    if (!gl || !bufSilkMatch || !bufSlabMatch) return;
+    const silkSegs = 16;
+    const skM = new Float32Array(N_MEM * silkSegs * 2);
+    const slM = new Float32Array(N_MEM * 6);
+    const hasQ = searchQ.length > 0;
+    for (let i = 0; i < N_MEM; i++) {
+      const m = (!hasQ || matchIds.has(i) || (selFeat && selFeat.id === i)) ? 1.0 : 0.0;
+      const b1 = i * silkSegs * 2;
+      for (let k = 0; k < silkSegs * 2; k++) skM[b1 + k] = m;
+      const b2 = i * 6;
+      for (let k = 0; k < 6; k++) slM[b2 + k] = m;
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufSilkMatch);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, skM);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufSlabMatch);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, slM);
+  }
+
+  function updateFlowStat() {
+    const el = document.getElementById('flowStat');
+    if (!el) return;
+    if (searchQ) el.textContent = `1:1 丝光流 ${matchIds.size} / ${N_MEM}`;
+    else if (focusFloor >= 0) el.textContent = `1:1 丝光流 ${FLOORS[focusFloor].cnt} / ${N_MEM}`;
+    else el.textContent = `1:1 丝光流 ${N_MEM} / ${N_MEM}`;
+  }
+
+  function populateRealFloorHUD() {
+    document.getElementById('topMeta').textContent = `WEBGL HDR · ${N_MEM.toLocaleString()} 真实节点 · ${N_MEM.toLocaleString()} 条 1:1 丝光流 · ${SNAP.edge_counts.total.toLocaleString()} 关联`;
+    const btnHtml = [
+      `<div class="fl-btn active" data-f="-1"><span><i class="fl-dot" style="background:#9BC6FF"></i>全部光幕</span><span class="fl-c">${N_MEM.toLocaleString()}</span></div>`,
+      ...FLOORS.filter(fl => SNAP.towerLabels[fl.idx]).map(fl => `<div class="fl-btn" data-f="${fl.idx}"><span><i class="fl-dot" style="background:${fl.hex}"></i>${escapeHtml(fl.lbl)}</span><span class="fl-c">${fl.cnt}</span></div>`)
+    ].join('');
+    document.getElementById('floorBtns').innerHTML = btnHtml;
+    document.querySelectorAll('#floorBtns .fl-btn').forEach(b => b.addEventListener('click', () => {
+      document.querySelectorAll('#floorBtns .fl-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active'); focusFloor = Number(b.dataset.f);
+      updateFlowStat();
+    }));
+
+    // Pick 8 representative prominent nodes across floors for unobtrusive default floating labels
+    const picked = [];
+    const sorted = [...NODES].sort((a, b) => (b.m.en.length * 14 + b.m.s + (b.m.lk?.length||0) * 8) - (a.m.en.length * 14 + a.m.s + (a.m.lk?.length||0) * 8));
+    for (let fi = 0; fi < 6; fi++) {
+      const cand = sorted.find(n => n.f === fi && !picked.includes(n) && n.m.lk && n.m.lk.length > 0) || sorted.find(n => n.f === fi);
+      if (cand) picked.push(cand);
+    }
+    FEATURED_IDS = new Set(picked.slice(0, 8).map(n => n.id));
+    selFeat = picked[0] || NODES[0];
+    coldWakeNode = NODES.find(n => n.f === 5 && n.m.lk && n.m.lk.length > 0) || NODES.find(n => n.f === 5) || NODES[0];
+    updateFlowStat();
+  }
+
+  function updateRightCard(nd) {
+    selFeat = nd;
+    const links = getRealLinks(nd);
+    document.getElementById('rcTitle').textContent = '2 跳链式联想 · ' + nd.title.slice(0, 14);
+    document.getElementById('chainBox').innerHTML = links.length ? links.map(([tid, lbl, col, hop, sc]) => {
+      const target = NODES[tid];
+      return `<div class="chain-item" style="border-left-color:${col}" data-tid="${tid}">
+        <div><div style="color:#EBF3FF">${escapeHtml(target ? target.title.slice(0, 18) : '')}</div><div style="font-size:9.5px;color:${col}">${lbl}</div></div>
+        <span style="font-family:'JetBrains Mono',monospace;color:#8AC2FF;font-weight:600">${hop} 跳</span>
+      </div>`;
+    }).join('') : `<div style="font-size:10px;color:#6E829E;padding:6px">该记忆暂无共享标签关联</div>`;
+
+    document.querySelectorAll('#chainBox .chain-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const t = NODES[Number(el.dataset.tid)];
+        if (t) focusNode(t);
+      });
+    });
+
+    const rows = [nd, ...links.slice(0, 3).map(([tid]) => NODES[tid])];
+    document.getElementById('rerankBox').innerHTML = rows.map((entry, index) =>
+      '<div class="score-row"><div class="score-lbl"><span>#' + (index + 1) + ' ' +
+      escapeHtml(entry.title.slice(0, 14)) + '</span><span>' + escapeHtml(entry.m.strengthLabel) +
+      '</span></div><div class="score-bar"><div style="width:' + entry.m.s +
+      '%;background:#569CFF"></div></div></div>'
+    ).join('');
+  }
+
+  function focusNode(nd) {
+    updateRightCard(nd);
+    syncMatchBuffers();
+    autoSpin = false; document.getElementById('btnSpin').textContent = '自转：关';
+    const rot = performance.now() * 0.001 * 0.10;
+    const worldAng = nd.ang + rot;
+    cam.tyaw = Math.atan2(Math.cos(worldAng), Math.sin(worldAng));
+    cam.tdist = 3.65;
+    document.getElementById('feedTxt').textContent = `[1:1 聚焦] ${nd.title} (${nd.badge} · 强度 ${nd.m.strengthLabel}) · 已展开 ${getRealLinks(nd).length} 条 2 跳弧`;
+  }
+
+  function proj3D(p, mvp, t) {
+    const rot = t * 0.10, c = Math.cos(rot), s = Math.sin(rot);
+    const x = p[0]*c - p[2]*s, y = p[1], z = p[0]*s + p[2]*c;
+    const cx = mvp[0]*x + mvp[4]*y + mvp[8]*z + mvp[12];
+    const cy = mvp[1]*x + mvp[5]*y + mvp[9]*z + mvp[13];
+    const cw = mvp[3]*x + mvp[7]*y + mvp[11]*z + mvp[15];
+    if (cw <= 0.1) return null;
+    return { x: (cx/cw*0.5+0.5)*W, y: (-cy/cw*0.5+0.5)*H, w: cw };
+  }
+
+  // ===== 60FPS MASTER RENDER LOOP =====
+  let lastT = 0, fpsAcc = 0, fpsF = 0;
+  function render(ts) {
+    const t = ts * 0.001;
+    if (lastT) { fpsAcc += ts - lastT; fpsF++; if (fpsAcc > 500) { document.getElementById('fpsOut').textContent = Math.round(fpsF*1000/fpsAcc) + ' FPS'; fpsAcc=0; fpsF=0; } }
+    lastT = ts;
+
+    if (autoSpin && !dragging) cam.tyaw += 0.0018;
+    cam.yaw += (cam.tyaw - cam.yaw) * 0.075;
+    cam.pitch += (cam.tpitch - cam.pitch) * 0.075;
+    cam.dist += (cam.tdist - cam.dist) * 0.075;
+    dimVal += (targetDim - dimVal) * 0.08;
+    if (wakeFast > 0) wakeFast = Math.max(0, wakeFast - 0.012);
+    wakeProg = (wakeProg + 0.0045 + wakeFast * 0.014) % 1;
+
+    const eye = [Math.sin(cam.yaw)*Math.cos(cam.pitch)*cam.dist, Math.sin(cam.pitch)*cam.dist, Math.cos(cam.yaw)*Math.cos(cam.pitch)*cam.dist];
+    const proj = mat4Perspective(44 * Math.PI / 180, Math.max(1,W)/Math.max(1,H), 0.1, 35.0);
+    const view = mat4LookAt(eye, [0, 0.0, 0], [0, 1, 0]);
+    const mvp = mat4Mul(proj, view);
+    lastMVP = mvp;
+    const searchActiveFlag = searchQ ? 1.0 : 0.0;
+
+    if (gl && fboScene) {
+      const useBloom = fboScene.ok && fboH1 && fboH1.ok && fboH2 && fboH2.ok && fboQ1 && fboQ1.ok && fboQ2 && fboQ2.ok;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, useBloom ? fboScene.fbo : null);
+      gl.viewport(0, 0, useBloom ? fboScene.w : glCanvas.width, useBloom ? fboScene.h : glCanvas.height);
+      gl.clearColor(0.008, 0.012, 0.022, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+
+      // 1. Strict 1:1 Spectral Silk Wings (N_MEM filaments = 1 per memory!)
+      gl.useProgram(progSilk);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufSilk);
+      bindA(progSilk,'aPos',3,36,0); bindA(progSilk,'aCol',3,36,12); bindA(progSilk,'aAlong',1,36,24); bindA(progSilk,'aSeed',1,36,28); bindA(progSilk,'aFloor',1,36,32);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufSilkMatch);
+      bindA(progSilk,'aMatch',1,4,0);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progSilk,'uMVP'), false, mvp);
+      gl.uniform1f(gl.getUniformLocation(progSilk,'uTime'), t);
+      gl.uniform1f(gl.getUniformLocation(progSilk,'uFocusFloor'), focusFloor);
+      gl.uniform1f(gl.getUniformLocation(progSilk,'uDim'), dimVal);
+      gl.uniform1f(gl.getUniformLocation(progSilk,'uSearchActive'), searchActiveFlag);
+      gl.drawArrays(gl.LINES, 0, cntSilk);
+
+      // 2. Orbital Ring Rails + Strict 1:1 Glowing 3D Memory Slabs (N_MEM slabs!)
+      gl.useProgram(progSlab);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progSlab,'uMVP'), false, mvp);
+      gl.uniform1f(gl.getUniformLocation(progSlab,'uTime'), t);
+      gl.uniform1f(gl.getUniformLocation(progSlab,'uFocusFloor'), focusFloor);
+      gl.uniform1f(gl.getUniformLocation(progSlab,'uDim'), dimVal);
+      gl.uniform1f(gl.getUniformLocation(progSlab,'uSearchActive'), searchActiveFlag);
+      const mLoc = gl.getAttribLocation(progSlab, 'aMatch');
+      if (mLoc >= 0) { gl.disableVertexAttribArray(mLoc); gl.vertexAttrib1f(mLoc, 1.0); }
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufRings);
+      bindA(progSlab,'aPos',3,32,0); bindA(progSlab,'aCol',3,32,12); bindA(progSlab,'aFloor',1,32,24); bindA(progSlab,'aBright',1,32,28);
+      gl.drawArrays(gl.LINES, 0, cntRings);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufSlabs);
+      bindA(progSlab,'aPos',3,32,0); bindA(progSlab,'aCol',3,32,12); bindA(progSlab,'aFloor',1,32,24); bindA(progSlab,'aBright',1,32,28);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufSlabMatch);
+      bindA(progSlab,'aMatch',1,4,0);
+      gl.drawArrays(gl.TRIANGLES, 0, cntSlabs);
+
+      // 3. Double-Helix Spine + Cold Awakening Vortex at real Floor-5 node coords
+      const rot = t * 0.10, cw = Math.cos(rot), sw = Math.sin(rot);
+      const wn = coldWakeNode || NODES[0];
+      const wx = wn.pos[0]*cw - wn.pos[2]*sw, wz = wn.pos[0]*sw + wn.pos[2]*cw;
+      gl.useProgram(progHelix); gl.bindBuffer(gl.ARRAY_BUFFER, bufHelix);
+      bindA(progHelix,'aPos',3,36,0); bindA(progHelix,'aCol',3,36,12); bindA(progHelix,'aSize',1,36,24); bindA(progHelix,'aSeed',1,36,28); bindA(progHelix,'aType',1,36,32);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progHelix,'uMVP'), false, mvp);
+      gl.uniform1f(gl.getUniformLocation(progHelix,'uTime'), t);
+      gl.uniform1f(gl.getUniformLocation(progHelix,'uDpr'), DPR);
+      gl.uniform1f(gl.getUniformLocation(progHelix,'uWake'), wakeProg);
+      gl.uniform2f(gl.getUniformLocation(progHelix,'uWakePos'), wx, wz);
+      gl.drawArrays(gl.POINTS, 0, cntHelix);
+
+      if (fboScene.ok && fboH1.ok && fboH2.ok && fboQ1.ok && fboQ2.ok) {
+        // DUAL-SCALE HDR BLOOM
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fboH1.fbo); gl.viewport(0, 0, fboH1.w, fboH1.h);
+        drawQuad(progBright, fboScene.tex, () => gl.uniform1i(gl.getUniformLocation(progBright,'uTex'), 0));
+        for (let p=0; p<2; p++) {
+          const sp = 1.3 + p * 1.1;
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fboH2.fbo);
+          drawQuad(progBlur, fboH1.tex, () => { gl.uniform1i(gl.getUniformLocation(progBlur,'uTex'),0); gl.uniform2f(gl.getUniformLocation(progBlur,'uDir'), sp/fboH1.w, 0); });
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fboH1.fbo);
+          drawQuad(progBlur, fboH2.tex, () => { gl.uniform1i(gl.getUniformLocation(progBlur,'uTex'),0); gl.uniform2f(gl.getUniformLocation(progBlur,'uDir'), 0, sp/fboH1.h); });
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fboQ1.fbo); gl.viewport(0, 0, fboQ1.w, fboQ1.h);
+        drawQuad(progBlur, fboH1.tex, () => { gl.uniform1i(gl.getUniformLocation(progBlur,'uTex'),0); gl.uniform2f(gl.getUniformLocation(progBlur,'uDir'), 1.8/fboQ1.w, 0); });
+        for (let p=0; p<2; p++) {
+          const sp = 2.0 + p * 1.4;
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fboQ2.fbo);
+          drawQuad(progBlur, fboQ1.tex, () => { gl.uniform1i(gl.getUniformLocation(progBlur,'uTex'),0); gl.uniform2f(gl.getUniformLocation(progBlur,'uDir'), sp/fboQ1.w, 0); });
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fboQ1.fbo);
+          drawQuad(progBlur, fboQ2.tex, () => { gl.uniform1i(gl.getUniformLocation(progBlur,'uTex'),0); gl.uniform2f(gl.getUniformLocation(progBlur,'uDir'), 0, sp/fboQ1.h); });
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+        gl.disable(gl.BLEND); gl.useProgram(progComp); gl.bindBuffer(gl.ARRAY_BUFFER, bufQuad);
+        const loc=gl.getAttribLocation(progComp,'aPos'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, fboScene.tex); gl.uniform1i(gl.getUniformLocation(progComp,'uScene'),0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, fboH1.tex);    gl.uniform1i(gl.getUniformLocation(progComp,'uBloomT'),1);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, fboQ1.tex);    gl.uniform1i(gl.getUniformLocation(progComp,'uBloomW'),2);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      }
+    }
+
+    // 2D HUD: 2-HOP REAL ASSOCIATION ARCS + DE-OVERLAPPED MICRO-LABEL CARDS
+    hud.clearRect(0, 0, W, H);
+    const hudIds = new Set(FEATURED_IDS);
+    if (selFeat) {
+      hudIds.add(selFeat.id);
+      getRealLinks(selFeat).forEach(([tid]) => hudIds.add(tid));
+    }
+    if (searchQ) {
+      let c = 0;
+      for (const id of matchIds) {
+        if (c++ >= 14) break;
+        hudIds.add(id);
+        (NODES[id].m.lk || []).slice(0, 1).forEach(([tid]) => hudIds.add(tid));
+      }
+    }
+
+    const pMap = new Map();
+    hudIds.forEach(id => { const nd = NODES[id]; const sp = nd && proj3D(nd.pos, mvp, t); if (sp) pMap.set(id, sp); });
+
+    const activeSources = searchQ ? [...matchIds].slice(0, 8).map(id => NODES[id]) : (selFeat ? [selFeat] : []);
+    activeSources.forEach(src => {
+      const p1 = pMap.get(src.id); if (!p1) return;
+      getRealLinks(src).forEach(([tid, , col, hop]) => {
+        const p2 = pMap.get(tid); if (!p2) return;
+        const mx = (p1.x + p2.x) * 0.5, my = (p1.y + p2.y) * 0.5 - (hop === 1 ? 26 : 14);
+        hud.save();
+        hud.strokeStyle = col;
+        hud.globalAlpha = hop === 1 ? 0.85 : 0.45;
+        hud.lineWidth = hop === 1 ? 1.55 : 0.95;
+        if (hop === 2) hud.setLineDash([4, 4]);
+        hud.beginPath(); hud.moveTo(p1.x, p1.y); hud.quadraticCurveTo(mx, my, p2.x, p2.y); hud.stroke();
+        const u = (t * (hop === 1 ? 0.6 : 0.36) + tid * 0.19) % 1, inv = 1 - u;
+        const bx = inv*inv*p1.x + 2*inv*u*mx + u*u*p2.x, by = inv*inv*p1.y + 2*inv*u*my + u*u*p2.y;
+        hud.fillStyle = '#FFFFFF'; hud.globalAlpha = hop === 1 ? 1 : 0.65;
+        hud.beginPath(); hud.arc(bx, by, hop === 1 ? 2.4 : 1.5, 0, Math.PI * 2); hud.fill();
+        hud.restore();
+      });
+    });
+
+    // Draw Micro-Label Cards (de-overlapped cleanly in screen space)
+    const placedBoxes = [];
+    const orderedIds = selFeat ? [selFeat.id, ...[...hudIds].filter(id => id !== selFeat.id)] : [...hudIds];
+    orderedIds.forEach(id => {
+      const nd = NODES[id];
+      const sp = pMap.get(id);
+      if (!nd || !sp || sp.x < 210 || sp.x > W - 260 || sp.y < 54 || sp.y > H - 58) return;
+      const isSel = selFeat && nd.id === selFeat.id;
+      const isMatch = matchIds.has(nd.id);
+      if (focusFloor >= 0 && nd.f !== focusFloor && !isSel) return;
+      if (searchQ && !isMatch && !isSel) return;
+
+      const lx = sp.x > W * 0.5 ? sp.x + 12 : sp.x - 134;
+      const ly = sp.y - 14;
+      if (!isSel && placedBoxes.some(b => Math.abs(b.x - lx) < 126 && Math.abs(b.y - ly) < 30)) return;
+      placedBoxes.push({ x: lx, y: ly });
+
+      const fl = FLOORS[nd.f];
+      hud.save();
+      hud.fillStyle = isSel ? 'rgba(13, 21, 35, 0.92)' : 'rgba(12, 18, 26, 0.82)';
+      hud.strokeStyle = isSel ? 'rgba(138, 198, 255, 0.78)' : 'rgba(148, 178, 216, 0.28)';
+      hud.lineWidth = isSel ? 1.1 : 0.7;
+      hud.beginPath(); hud.roundRect(lx, ly, 124, 26, 3.5); hud.fill(); hud.stroke();
+      hud.fillStyle = fl.hex; hud.fillRect(lx + 1, ly + 1, 2.5, 24);
+      hud.font = (isSel ? '600 ' : '500 ') + '10px "PingFang SC", sans-serif';
+      hud.fillStyle = '#EDF4FF'; hud.textAlign = 'left';
+      hud.fillText(nd.title.slice(0, 10), lx + 7, sp.y - 2);
+      hud.font = '8.5px "JetBrains Mono", monospace';
+      hud.fillStyle = '#7E93AF';
+      hud.fillText(nd.badge.slice(0, 16), lx + 7, sp.y + 8.5);
+      hud.strokeStyle = 'rgba(180,210,245,0.38)'; hud.lineWidth = 0.75;
+      hud.beginPath(); hud.moveTo(sp.x, sp.y); hud.lineTo(sp.x > W*0.5 ? lx : lx + 124, sp.y); hud.stroke();
+      hud.restore();
+    });
+
+    requestAnimationFrame(render);
+  }
+
+  function resize() {
+    W = Math.max(320, window.innerWidth || document.documentElement.clientWidth || 1280);
+    H = Math.max(240, window.innerHeight || document.documentElement.clientHeight || 720);
+    glCanvas.width = Math.round(W * DPR); glCanvas.height = Math.round(H * DPR);
+    hudCanvas.width = Math.round(W * DPR); hudCanvas.height = Math.round(H * DPR);
+    hud.setTransform(DPR, 0, 0, DPR, 0, 0);
+    rebuildFBOs();
+  }
+
+  // ===== INTERACTION & ALL-RECORD SEARCH =====
+  let lx = 0, ly = 0, moved = 0;
+  hudCanvas.addEventListener('mousedown', e => { dragging = true; lx = e.clientX; ly = e.clientY; moved = 0; hudCanvas.classList.add('dragging'); });
+  window.addEventListener('mouseup', () => { dragging = false; hudCanvas.classList.remove('dragging'); });
+  window.addEventListener('mousemove', e => {
+    if (dragging) {
+      const dx = e.clientX - lx, dy = e.clientY - ly; moved += Math.hypot(dx, dy);
+      cam.tyaw -= dx * 0.006; cam.tpitch = Math.max(-0.35, Math.min(1.15, cam.tpitch + dy * 0.005));
+      lx = e.clientX; ly = e.clientY;
+    }
+  });
+  hudCanvas.addEventListener('wheel', e => { e.preventDefault(); cam.tdist = Math.max(2.2, Math.min(6.8, cam.tdist * (e.deltaY > 0 ? 1.09 : 0.92))); }, { passive: false });
+  hudCanvas.addEventListener('click', e => {
+    if (moved > 6 || !lastMVP) return;
+    const t = performance.now() * 0.001;
+    let best = null, bd = 22 * 22;
+    for (let i = 0; i < N_MEM; i++) {
+      const nd = NODES[i];
+      if (focusFloor >= 0 && nd.f !== focusFloor) continue;
+      if (searchQ && !matchIds.has(nd.id)) continue;
+      const sp = proj3D(nd.pos, lastMVP, t); if (!sp) continue;
+      const d = (sp.x - e.clientX)**2 + (sp.y - e.clientY)**2;
+      if (d < bd) { bd = d; best = nd; }
+    }
+    if (best) focusNode(best);
+  });
+
+  const qInp = document.getElementById('qInp'), qClr = document.getElementById('qClr'), qRes = document.getElementById('qRes');
+  function runQ(raw) {
+    searchQ = raw.trim().toLowerCase();
+    qClr.classList.toggle('show', searchQ.length > 0);
+    matchIds.clear();
+    if (!searchQ) {
+      qRes.classList.remove('show');
+      targetDim = 1.0; autoSpin = true; document.getElementById('btnSpin').textContent = '自转：开';
+      cam.tdist = 4.35;
+      syncMatchBuffers();
+      updateFlowStat();
+      return;
+    }
+    const terms = searchQ.split(/\s+/).filter(Boolean);
+    const hits = NODES.filter(n => terms.every(tk => n.kw.includes(tk))).sort((a, b) => b.m.s - a.m.s);
+    hits.forEach(h => matchIds.add(h.id));
+    targetDim = hits.length > 0 ? 0.34 : 0.22;
+    updateFlowStat();
+    qRes.classList.add('show');
+    qRes.innerHTML = hits.length === 0 ? `<div style="font-size:10px;color:#6E829E;padding:4px">未命中</div>` :
+      `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#8AC2FF;padding:2px 5px">命中 ${hits.length} / ${N_MEM} 条 · 已点亮 ${hits.length} 条流</div>` +
+      hits.slice(0, 26).map((h, i) => `<div class="sr-item ${i===0?'active':''}" data-id="${h.id}"><span>${escapeHtml(h.title.slice(0,13))}</span><span class="sr-m">${escapeHtml(h.m.strengthLabel)}</span></div>`).join('');
+    qRes.querySelectorAll('.sr-item').forEach(el => el.addEventListener('click', () => {
+      qRes.querySelectorAll('.sr-item').forEach(x => x.classList.remove('active')); el.classList.add('active');
+      const nd = NODES[Number(el.dataset.id)]; if (nd) focusNode(nd);
+    }));
+    syncMatchBuffers();
+    if (hits.length > 0) focusNode(hits[0]);
+  }
+  qInp.addEventListener('input', e => runQ(e.target.value));
+  qClr.addEventListener('click', () => { qInp.value = ''; runQ(''); });
+  window.addEventListener('keydown', e => { if (e.key === 'Escape' && searchQ) { qInp.value = ''; runQ(''); } });
+
+  document.getElementById('btnSpin').addEventListener('click', function(){ autoSpin = !autoSpin; this.textContent = '自转：' + (autoSpin ? '开' : '关'); });
+  document.getElementById('btnReset').addEventListener('click', () => {
+    cam.tyaw=0.25; cam.tpitch=0.30; cam.tdist=4.35; focusFloor=-1; autoSpin=true;
+    document.querySelectorAll('#floorBtns .fl-btn').forEach(x => x.classList.toggle('active', Number(x.dataset.f)===-1));
+    updateFlowStat();
+  });
+  document.getElementById('btnWake').addEventListener('click', () => {
+    wakeProg = 0.02; wakeFast = 1.0;
+    if (coldWakeNode) focusNode(coldWakeNode);
+  });
+  document.getElementById('rcClose').addEventListener('click', () => document.getElementById('rightCard').classList.add('hidden'));
+  document.getElementById('btnCard').addEventListener('click', () => document.getElementById('rightCard').classList.toggle('hidden'));
+
+  initWebGL();
+  populateRealFloorHUD();
+  syncMatchBuffers();
+  if (selFeat) updateRightCard(selFeat);
+  document.getElementById('feedTxt').textContent = `[真实 1:1 塔楼] ${N_MEM.toLocaleString()} 个记忆节点 = ${N_MEM.toLocaleString()} 条丝光流 · 按来源分组 (${SNAP.generated_at})`;
+
+  const uq = new URLSearchParams(location.search).get('q');
+  if (uq) { qInp.value = uq; setTimeout(() => runQ(uq), 80); }
+
+  resize();
+  window.captureView = () => ({ cam: { ...cam }, query: qInp.value, autoSpin, focusFloor,
+    showCard: !document.getElementById('rightCard').classList.contains('hidden') });
+  const restored = parent.restoredView;
+  if (restored?.mod === 'm3') {
+    if (restored.query) { qInp.value = restored.query; runQ(restored.query); }
+    Object.assign(cam, restored.cam);
+    ({ autoSpin, focusFloor } = restored);
+    document.getElementById('btnSpin').textContent = '自转：' + (autoSpin ? '开' : '关');
+    document.getElementById('rightCard').classList.toggle('hidden', !restored.showCard);
+    document.querySelectorAll('#floorBtns .fl-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.f) === focusFloor));
+    updateFlowStat();
+  }
+  window.addEventListener('resize', resize);
+  requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>

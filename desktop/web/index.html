@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>忆栈 MemStack</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+<link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
+<meta name="theme-color" content="#0B1220" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #05070B;
+    --bar: rgba(8, 12, 18, 0.94);
+    --line: rgba(154, 182, 222, 0.14);
+    --text: #EAF1FA;
+    --muted: #7F93AD;
+    --blue: #659BE6;
+    --blue-hi: #9AC6FF;
+    --ok: #64D4B4;
+    --warn: #E4B56E;
+    --err: #F08A95;
+    --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+    --sans: "PingFang SC", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans);
+  }
+  .shell {
+    width: 100vw; height: 100vh;
+    display: flex; flex-direction: column;
+  }
+  .nav {
+    height: 40px; flex-shrink: 0;
+    background: var(--bar);
+    border-bottom: 1px solid var(--line);
+    padding: 0 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    user-select: none;
+  }
+  .nav-l, .nav-c, .nav-r {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .nav-l { flex-shrink: 0; }
+  .nav-r { flex-shrink: 0; }
+  .orb {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: radial-gradient(circle, #D8EEFF 0%, #659BE6 65%, rgba(101,155,230,0) 100%);
+    box-shadow: 0 0 8px rgba(101,155,230,0.7);
+  }
+  .brand {
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    letter-spacing: 0.08em; color: #EFF5FF; white-space: nowrap;
+  }
+  .pill-stat {
+    font-family: var(--mono); font-size: 9.8px; color: var(--blue-hi);
+    background: rgba(101, 155, 230, 0.12);
+    border: 1px solid rgba(118, 178, 250, 0.30);
+    border-radius: 5px; padding: 2px 7px; white-space: nowrap;
+  }
+  .tabs {
+    display: flex; align-items: center; gap: 4px;
+    background: rgba(12, 17, 26, 0.9);
+    border: 1px solid var(--line); border-radius: 7px; padding: 2px;
+    overflow-x: auto; max-width: 100%;
+  }
+  .tab {
+    background: transparent; border: 1px solid transparent;
+    color: var(--muted); font-family: var(--sans); font-size: 11px; font-weight: 500;
+    padding: 4px 10px; border-radius: 5px; cursor: pointer;
+    white-space: nowrap; transition: all .14s;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .tab:hover { color: #DCE8F8; background: rgba(101,155,230,0.08); }
+  .tab.active {
+    color: #F4F9FF; font-weight: 600;
+    background: linear-gradient(180deg, rgba(101,155,230,0.26), rgba(74,126,204,0.16));
+    border-color: rgba(130,188,255,0.48);
+  }
+  .tab .num { font-family: var(--mono); font-size: 9.5px; opacity: 0.72; }
+  .btn-nav {
+    background: rgba(13, 20, 32, 0.9);
+    border: 1px solid rgba(154,182,222,0.22);
+    color: #CFE0F6; font-family: var(--sans); font-size: 10.6px;
+    padding: 3.5px 9px; border-radius: 5px; cursor: pointer;
+    white-space: nowrap; transition: all .14s;
+  }
+  .btn-nav:hover { border-color: rgba(130,188,255,0.52); color: #FFF; }
+  .btn-nav:disabled { opacity: 0.55; cursor: wait; }
+  .lock-pill {
+    font-family: var(--mono); font-size: 9.8px; color: var(--ok);
+    background: rgba(82, 200, 168, 0.10);
+    border: 1px solid rgba(82, 200, 168, 0.32);
+    border-radius: 5px; padding: 2px 7px; white-space: nowrap;
+  }
+  .lock-pill.warn { color: var(--warn); background: rgba(228,181,110,0.10); border-color: rgba(228,181,110,0.34); }
+  .lock-pill.err { color: var(--err); background: rgba(240,138,149,0.12); border-color: rgba(240,138,149,0.4); }
+  .sched-txt {
+    font-family: var(--mono); font-size: 9.8px; color: var(--muted); white-space: nowrap;
+  }
+  iframe#stage {
+    flex: 1; width: 100%; border: 0; background: var(--bg); display: block;
+  }
+  @media (max-width: 1180px) {
+    .sched-txt, .brand { display: none; }
+    .tab { padding: 4px 7px; font-size: 10.5px; }
+  }
+</style>
+<link rel="stylesheet" href="connection.css">
+<link rel="stylesheet" href="button-feedback.css">
+</head>
+<body>
+<div class="shell">
+  <header class="nav">
+    <div class="nav-l">
+      <i class="orb"></i>
+      <span class="brand">忆栈 MemStack</span>
+      <span class="pill-stat" id="navTotal">未连接</span>
+    </div>
+    <nav class="tabs" id="navTabs">
+      <button class="tab active" data-mod="m1"><span class="num">01</span>宇宙星图</button>
+      <button class="tab" data-mod="m2"><span class="num">02</span>流转矩阵</button>
+      <button class="tab" data-mod="m3"><span class="num">03</span>全景分屏</button>
+      <button class="tab" data-mod="m4"><span class="num">04</span>衰减沙盒</button>
+      <button class="tab" data-mod="m5"><span class="num">05</span>交接与预算</button>
+      <button class="tab" data-mod="m6"><span class="num">06</span>蒸馏与审计</button>
+    </nav>
+    <div class="nav-r">
+      <button class="btn-nav" id="btnSource">连接数据</button><button class="btn-nav" id="btnDemo">演示</button>
+      <button class="btn-nav" id="btnRefresh">↻ 刷新快照</button>
+      <button class="btn-nav" id="btnUndo" hidden>撤销写入</button>
+      <span class="lock-pill" id="navLock">只读</span>
+    </div>
+  </header>
+  <iframe id="stage" title="记忆可视化" hidden></iframe>
+  <section id="workspaceEmpty" class="workspace-empty">
+    <h1 id="emptyTitle">选择记忆数据</h1>
+    <p id="emptyDetail">接入自己的数据，或打开合成演示。</p>
+    <div class="source-actions">
+      <button class="btn-nav" id="emptySource">连接数据</button>
+      <button class="btn-nav" id="emptyDemo">打开合成演示</button>
+    </div>
+  </section>
+</div>
+<dialog class="source-dialog" id="sourceDialog" aria-labelledby="sourceTitle">
+  <div class="source-head">
+    <h2 id="sourceTitle">连接记忆数据</h2>
+    <button class="btn-nav" id="sourceClose" aria-label="关闭">关闭</button>
+  </div>
+  <div class="source-types">
+    <button class="btn-nav" id="pickFolder">选忆栈数据目录</button>
+    <button class="btn-nav" id="pickFile">选 SQLite / JSONL</button>
+    <button class="btn-nav" id="pickHttp">连接 HTTP 接口</button>
+  </div>
+  <div id="folderExtras" hidden>
+    <button class="btn-nav" id="pickDsh">关联 DSH 会话目录</button>
+    <button class="btn-nav" id="pickVault">关联 Vault 笔记库</button>
+    <button class="btn-nav" id="toggleWrite">启用本机写入</button>
+  </div>
+  <form id="urlForm" hidden>
+    <label>接口基础地址 <input type="url" id="httpUrl" placeholder="http://127.0.0.1:8787" required></label>
+    <div><button class="btn-nav" type="submit">连接</button></div>
+  </form>
+  <form id="mapForm" hidden>
+    <p id="fileName"></p>
+    <label id="tableLabel">数据表 <select id="tableSelect"></select></label>
+    <div class="fields-grid">
+      <label>内容字段 <input id="map-content" data-field="content" list="fields" required></label>
+      <label>强度字段 <input id="map-strength" data-field="strength" list="fields"></label>
+      <label>时间字段 <input id="map-time" data-field="time" list="fields"></label>
+      <label>分组 / 池字段 <input id="map-pool" data-field="pool" list="fields"></label>
+      <label>实体标签字段 <input id="map-entities" data-field="entities" list="fields"></label>
+    </div>
+    <datalist id="fields"></datalist>
+    <div><button class="btn-nav" type="submit">连接</button></div>
+  </form>
+  <p id="sourceError" role="status"></p>
+  <button class="btn-nav" id="disconnect">断开当前连接</button>
+</dialog>
+<script src="projection.js"></script>
+<script src="lab-runtime.js"></script>
+<script src="desktop.js"></script>
+</body>
+</html>

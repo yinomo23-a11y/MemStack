@@ -1,0 +1,1594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MEMORY COSMOS · 模块 01 电影级 GPU 机械星环神经宇宙</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #020306; color: #E4ECF8;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    user-select: none;
+  }
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #hudCanvas { cursor: grab; z-index: 4; }
+  #hudCanvas.dragging { cursor: grabbing; }
+
+  /* Ultra-sleek floating cinema HUD (never suffocates the 3D megastructure) */
+  .top-hud {
+    position: fixed; top: 0; left: 0; right: 0; height: 52px; z-index: 12;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 18px; pointer-events: none;
+    background: linear-gradient(180deg, rgba(2,4,8,0.82) 0%, rgba(2,4,8,0) 100%);
+  }
+  .top-hud > * { pointer-events: auto; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .orb {
+    width: 8px; height: 8px; border-radius: 50%; background: #82BEFF;
+    box-shadow: 0 0 12px #659BE6, 0 0 3px #FFF;
+  }
+  .b-title { font-size: 12.5px; font-weight: 700; letter-spacing: 1.1px; color: #EFF5FF; }
+  .b-meta {
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 10px; color: #7F93B0;
+    padding: 2px 7px; border-radius: 4px;
+    background: rgba(12, 17, 26, 0.72); border: 1px solid rgba(148,178,216,0.16);
+  }
+
+  .cam-pills {
+    display: inline-flex; gap: 3px; padding: 3px; border-radius: 999px;
+    background: rgba(8, 12, 20, 0.78); border: 1px solid rgba(148,178,216,0.18);
+    backdrop-filter: blur(10px);
+  }
+  .cam-btn {
+    background: transparent; border: 1px solid transparent; color: #8A9DB8;
+    font-size: 11px; padding: 4.5px 12px; border-radius: 999px; cursor: pointer;
+    transition: all .16s ease; font-family: inherit;
+  }
+  .cam-btn:hover { color: #E4EEF9; }
+  .cam-btn.active {
+    background: rgba(101, 155, 230, 0.20); border-color: rgba(130, 188, 255, 0.45);
+    color: #F4F9FF; font-weight: 600;
+  }
+
+  .top-actions { display: flex; align-items: center; gap: 8px; }
+  .hud-btn {
+    background: rgba(10, 15, 24, 0.78); border: 1px solid rgba(148,178,216,0.22);
+    color: #CFE0F5; font-size: 11px; padding: 5px 11px; border-radius: 999px;
+    cursor: pointer; backdrop-filter: blur(10px); transition: all .15s; font-family: inherit;
+  }
+  .hud-btn:hover { border-color: rgba(130,188,255,0.6); color: #FFF; background: rgba(20, 34, 56, 0.85); }
+  .hud-btn.pri {
+    background: rgba(96, 154, 235, 0.18); border-color: rgba(130,188,255,0.48);
+    color: #B4D7FF; font-weight: 600;
+  }
+  .ro-badge {
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 10px; color: #67D6B8;
+    padding: 4px 9px; border-radius: 999px;
+    background: rgba(78, 196, 168, 0.09); border: 1px solid rgba(78, 196, 168, 0.28);
+  }
+
+  /* Left Slim Entity / Pool Filter + Live 3D Search Rail */
+  .left-rail {
+    position: fixed; left: 16px; top: 64px; z-index: 10; width: 248px;
+    background: rgba(7, 10, 16, 0.78); border: 1px solid rgba(148,178,216,0.16);
+    border-radius: 10px; padding: 10px 11px; backdrop-filter: blur(12px);
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .search-wrap { position: relative; display: flex; align-items: center; }
+  .search-inp {
+    width: 100%; background: rgba(4, 7, 13, 0.90); border: 1px solid rgba(148,178,216,0.24);
+    border-radius: 6px; color: #EDF4FF; font-size: 11px; padding: 6px 26px 6px 9px;
+    outline: none; font-family: inherit; transition: border-color .14s;
+  }
+  .search-inp:focus { border-color: rgba(130, 188, 255, 0.68); box-shadow: 0 0 0 2px rgba(101,155,230,0.16); }
+  .search-inp::placeholder { color: #647792; }
+  .search-clr {
+    position: absolute; right: 6px; background: none; border: none; color: #7C90AB;
+    font-size: 13px; cursor: pointer; display: none; padding: 0 3px;
+  }
+  .search-clr.show { display: block; }
+  .search-clr:hover { color: #FFF; }
+  .search-res {
+    display: none; flex-direction: column; gap: 3px; max-height: 185px; overflow-y: auto;
+    padding-top: 2px; border-top: 1px solid rgba(148,178,216,0.10);
+  }
+  .search-res.show { display: flex; }
+  .sr-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    padding: 5px 7px; border-radius: 5px; cursor: pointer;
+    background: rgba(14, 21, 34, 0.65); border: 1px solid transparent;
+    transition: all .12s;
+  }
+  .sr-item:hover, .sr-item.active {
+    background: rgba(101, 155, 230, 0.18); border-color: rgba(130, 188, 255, 0.45);
+  }
+  .sr-t { font-size: 11px; color: #E8F1FD; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sr-m { font-family: "JetBrains Mono", Consolas, monospace; font-size: 9.5px; color: #8AC2FF; flex-shrink: 0; }
+  .sr-empty { font-size: 10.5px; color: #6E819B; padding: 6px 4px; text-align: center; }
+  .rail-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 9.5px; color: #7E92AE; letter-spacing: 0.5px;
+  }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip {
+    font-size: 10px; padding: 2.5px 7px; border-radius: 99px; cursor: pointer;
+    background: rgba(148,178,216,0.07); border: 1px solid rgba(148,178,216,0.15);
+    color: #A4B5CC; transition: all .14s;
+  }
+  .chip:hover, .chip.active {
+    background: rgba(101,155,230,0.22); border-color: rgba(130,188,255,0.52); color: #F2F7FF;
+  }
+  .mini-ctrl { display: flex; gap: 5px; }
+  .mini-ctrl button {
+    flex: 1; background: rgba(14,20,32,0.8); border: 1px solid rgba(148,178,216,0.16);
+    color: #B4C5DC; font-size: 10px; padding: 4px 0; border-radius: 5px; cursor: pointer; font-family: inherit;
+  }
+  .mini-ctrl button:hover { border-color: rgba(130,188,255,0.48); color: #FFF; }
+  .hint-txt { font-size: 9.8px; color: #687A94; line-height: 1.42; }
+
+  /* Right Selected Memory Card (Compact & Closable) */
+  .right-card {
+    position: fixed; right: 16px; top: 64px; z-index: 10; width: 276px;
+    background: rgba(7, 10, 16, 0.78); border: 1px solid rgba(148,178,216,0.16);
+    border-radius: 10px; padding: 11px 12px; backdrop-filter: blur(12px);
+    display: flex; flex-direction: column; gap: 7px; transition: opacity .2s, transform .2s;
+  }
+  .right-card.hidden { opacity: 0; pointer-events: none; transform: translateX(16px); }
+  .rc-top { display: flex; justify-content: space-between; align-items: center; }
+  .rc-title { font-size: 13px; font-weight: 600; color: #F3F8FF; }
+  .rc-close { background: none; border: none; color: #7C8FA8; font-size: 15px; cursor: pointer; padding: 0 3px; }
+  .rc-close:hover { color: #FFF; }
+  .rc-badge {
+    display: inline-block; font-family: "JetBrains Mono", Consolas, monospace; font-size: 9.5px;
+    color: #8FC4FF; background: rgba(101,155,230,0.14); border: 1px solid rgba(101,155,230,0.34);
+    padding: 1.5px 7px; border-radius: 4px; width: fit-content;
+  }
+  .rc-desc { font-size: 10.8px; color: #9FB0C8; line-height: 1.48; }
+  .rc-kv { display: flex; justify-content: space-between; font-size: 10.5px; padding: 3px 0; border-bottom: 1px solid rgba(148,178,216,0.08); }
+  .rc-kv:last-child { border-bottom: none; }
+  .rc-kv span:first-child { color: #7487A2; }
+  .rc-kv span:last-child { font-family: "JetBrains Mono", Consolas, monospace; color: #E2EEFC; }
+
+  /* Ultra-slim bottom cinema telemetry strip */
+  .bot-strip {
+    position: fixed; left: 16px; right: 16px; bottom: 14px; z-index: 10;
+    background: rgba(6, 9, 15, 0.76); border: 1px solid rgba(148,178,216,0.14);
+    border-radius: 10px; padding: 8px 14px; backdrop-filter: blur(10px);
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 10.5px;
+  }
+  .bot-stream { display: flex; align-items: center; gap: 8px; color: #A8BCD6; overflow: hidden; white-space: nowrap; }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #659BE6; box-shadow: 0 0 8px #659BE6; flex-shrink: 0; }
+  .bot-metrics { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+  .bm { color: #7A8DA8; }
+  .bm strong { color: #EAF2FF; font-weight: 600; margin-left: 4px; }
+  .bm.hi strong { color: #8AC2FF; }
+
+  #tip {
+    position: fixed; pointer-events: none; z-index: 20;
+    background: rgba(7, 11, 18, 0.92); border: 1px solid rgba(120,180,255,0.45);
+    border-radius: 6px; padding: 5px 9px; font-size: 11px; color: #EDF4FF;
+    display: none; backdrop-filter: blur(6px);
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="glCanvas"></canvas>
+  <canvas id="hudCanvas"></canvas>
+</div>
+
+<div class="top-hud">
+  <div class="brand">
+    <i class="orb"></i>
+    <span class="b-title">MEMORY COSMOS // 01</span>
+    <span class="b-meta" id="topMeta">加载真实记忆库中...</span>
+  </div>
+
+  <div class="cam-pills" id="camPills">
+    <button class="cam-btn active" data-cam="wide">斜切全景</button>
+    <button class="cam-btn" data-cam="close">穿环特写</button>
+    <button class="cam-btn" data-cam="top">正视总览</button>
+  </div>
+
+  <div class="top-actions">
+    <span class="ro-badge">只读</span>
+    <button class="hud-btn pri" id="btnRecall">⚡ 触发召回脉冲波</button>
+    <button class="hud-btn" id="btnToggleCard">检视卡</button>
+  </div>
+</div>
+
+<div class="left-rail">
+  <div class="rail-head"><span>1:1 REAL SEARCH &amp; POOLS</span><span style="color:#8AC2FF" id="fpsOut">60 FPS</span></div>
+  <div class="search-wrap">
+    <input class="search-inp" id="searchInp" placeholder="搜索记忆、实体或标签…" aria-label="搜索记忆、实体或标签" autocomplete="off" />
+    <button class="search-clr" id="searchClr" title="清空 (Esc)">×</button>
+  </div>
+  <div class="search-res" id="searchRes"></div>
+  <div class="chip-row" id="poolChips"></div>
+  <div class="mini-ctrl">
+    <button id="btnOrbit">巡航：开</button>
+    <button id="btnFly">自动穿环</button>
+  </div>
+  <div class="hint-txt" id="hintTxt">1 条记忆 = 1 颗星 + 1 条实时数据流；输入关键词按 1:1 比例点亮命中星簇与 2 跳弧。</div>
+</div>
+
+<div class="right-card" id="rightCard">
+  <div class="rc-top">
+    <span class="rc-title" id="rcTitle">-</span>
+    <button class="rc-close" id="rcClose" title="收起以全屏欣赏">×</button>
+  </div>
+  <span class="rc-badge" id="rcBadge">-</span>
+  <div class="rc-desc" id="rcDesc">-</div>
+  <canvas id="miniCurve" height="62" style="width:100%;height:62px;border-radius:5px;background:#05080F;border:1px solid rgba(148,178,216,0.12)"></canvas>
+  <div>
+    <div class="rc-kv"><span>实时强度 / real_floor</span><span id="rcFloor">-</span></div>
+    <div class="rc-kv"><span>三轨（细节 / 印象 / 余温）</span><span id="rcTri">-</span></div>
+    <div class="rc-kv"><span>共享实体 · 真实关联</span><span id="rcEnt">-</span></div>
+  </div>
+</div>
+
+<div class="bot-strip">
+  <div class="bot-stream">
+    <i class="live-dot"></i>
+    <span id="liveFeed">正在载入记忆快照…</span>
+  </div>
+  <div class="bot-metrics" id="botMetrics"></div>
+</div>
+
+<div id="tip"></div>
+
+<script src="gemini-data.js"></script>
+<script src="m1-live.js"></script>
+<script>
+(function(){
+  const glCanvas = document.getElementById('glCanvas');
+  const hudCanvas = document.getElementById('hudCanvas');
+  const hud = hudCanvas.getContext('2d');
+  const tip = document.getElementById('tip');
+  let W = 0, H = 0, DPR = Math.min(2, window.devicePixelRatio || 1);
+
+  let seed = 2026112199;
+  function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
+
+  // ===== 4x4 MATRIX MATH (WITH CAMERA ROLL FOR DIAGONAL FRAMING) =====
+  function mat4Perspective(fovRad, aspect, near, far) {
+    const f = 1.0 / Math.tan(fovRad * 0.5), nf = 1.0 / (near - far);
+    return new Float32Array([f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0]);
+  }
+  function mat4LookAt(eye, target, up) {
+    let zx=eye[0]-target[0], zy=eye[1]-target[1], zz=eye[2]-target[2];
+    let zl=Math.hypot(zx,zy,zz)||1; zx/=zl; zy/=zl; zz/=zl;
+    let xx=up[1]*zz-up[2]*zy, xy=up[2]*zx-up[0]*zz, xz=up[0]*zy-up[1]*zx;
+    let xl=Math.hypot(xx,xy,xz)||1; xx/=xl; xy/=xl; xz/=xl;
+    let yx=zy*xz-zz*xy, yy=zz*xx-zx*xz, yz=zx*xy-zy*xx;
+    return new Float32Array([
+      xx,yx,zx,0, xy,yy,zy,0, xz,yz,zz,0,
+      -(xx*eye[0]+xy*eye[1]+xz*eye[2]),
+      -(yx*eye[0]+yy*eye[1]+yz*eye[2]),
+      -(zx*eye[0]+zy*eye[1]+zz*eye[2]), 1
+    ]);
+  }
+  function mat4Mul(a, b) {
+    const o = new Float32Array(16);
+    for (let i=0;i<4;i++) for (let j=0;j<4;j++) o[j*4+i]=a[i]*b[j*4]+a[4+i]*b[j*4+1]+a[8+i]*b[j*4+2]+a[12+i]*b[j*4+3];
+    return o;
+  }
+
+  // ===== CAMERA PRESETS (WIDE DIAGONAL & FLY-THROUGH CLOSE-UP) =====
+  const CAM_PRESETS = {
+    wide:  { yaw: 0.42, pitch: 0.62, dist: 3.15, roll: 0.46, tx: 0.14, ty: -0.06, tz: 0.0 },
+    close: { yaw: 0.18, pitch: 0.24, dist: 1.88, roll: 0.34, tx: 0.46, ty: 0.04,  tz: 0.25 },
+    top:   { yaw: 0.00, pitch: 1.05, dist: 4.15, roll: 0.00, tx: 0.00, ty: 0.00,  tz: 0.0 }
+  };
+  const urlCam = new URLSearchParams(location.search).get('cam');
+  const initKey = (urlCam && CAM_PRESETS[urlCam]) ? urlCam : 'wide';
+  const cam = { ...CAM_PRESETS[initKey], tyaw: CAM_PRESETS[initKey].yaw, tpitch: CAM_PRESETS[initKey].pitch, tdist: CAM_PRESETS[initKey].dist, troll: CAM_PRESETS[initKey].roll, ttx: CAM_PRESETS[initKey].tx, tty: CAM_PRESETS[initKey].ty, ttz: CAM_PRESETS[initKey].tz };
+  let autoOrbit = true, autoFly = false, dragging = false, focusPool = -1, burst = 0, burstPhase = 0;
+
+  // ===== WEBGL INITIALIZATION =====
+  const gl = glCanvas.getContext('webgl', { alpha: false, antialias: false, powerPreference: 'high-performance' });
+  if (!gl) {
+    document.getElementById('topMeta').textContent = '当前设备无法渲染 WebGL，可使用流转矩阵。';
+    return;
+  }
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error('SHADER:', gl.getShaderInfoLog(s));
+    return s;
+  }
+  function makeProg(vs, fs) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error('LINK:', gl.getProgramInfoLog(p));
+    return p;
+  }
+
+  // ---- SHADER A: 3D MECHANICAL RING BLOCKS (ZERO pow() NaN-SAFE D3D11/NVIDIA!) ----
+  const RING_VS = `
+    precision highp float;
+    attribute vec3 aPos;
+    attribute vec3 aCol;
+    attribute float aPhase;
+    attribute float aBright;
+    uniform mat4 uMVP;
+    uniform float uTime;
+    uniform float uBurst;
+    varying vec3 vCol;
+    varying float vAlpha;
+    void main() {
+      float ang = uTime * (aPhase >= 0.0 ? 0.032 : -0.022);
+      float c = cos(ang), s = sin(ang);
+      vec3 p = vec3(aPos.x * c - aPos.z * s, aPos.y, aPos.x * s + aPos.z * c);
+      gl_Position = uMVP * vec4(p, 1.0);
+      float wave = 0.65 + 0.35 * sin(abs(aPhase) * 6.2831 - uTime * 2.2);
+      float s0 = max(0.0, sin(abs(aPhase) * 2.0 - uTime * 1.15));
+      float s2 = s0 * s0; float s4 = s2 * s2; float scan = s4 * s4 * s4;
+      vCol = aCol * (0.9 + 0.55 * scan + uBurst * 0.45);
+      vAlpha = clamp(aBright * (0.72 + 0.28 * wave + scan * 0.65), 0.0, 1.0);
+    }
+  `;
+  const RING_FS = `
+    precision highp float;
+    varying vec3 vCol;
+    varying float vAlpha;
+    void main() {
+      gl_FragColor = vec4(vCol * vAlpha, vAlpha);
+    }
+  `;
+
+  // ---- SHADER B: POLYCHROMATIC SYNAPTIC FILAMENTS (NaN-SAFE) ----
+  const WEB_VS = `
+    precision highp float;
+    attribute vec3 aPos;
+    attribute vec3 aCol;
+    attribute float aAlong;
+    attribute float aSeed;
+    attribute float aPool;
+    uniform mat4 uMVP;
+    uniform float uTime;
+    uniform float uFocusPool;
+    uniform float uBurst;
+    uniform float uDim;
+    varying vec3 vCol;
+    varying float vAlong;
+    varying float vSeed;
+    varying float vAlpha;
+    void main() {
+      float rot = uTime * 0.018;
+      float c = cos(rot), s = sin(rot);
+      vec3 p = vec3(aPos.x * c - aPos.z * s, aPos.y, aPos.x * s + aPos.z * c);
+      p.y += sin(p.x * 3.5 + uTime * 0.8 + aSeed * 6.28) * 0.008;
+      gl_Position = uMVP * vec4(p, 1.0);
+      float fBoost = (uFocusPool < -0.5) ? 1.0 : ((abs(aPool - uFocusPool) < 0.3) ? 2.1 : 0.14);
+      vCol = aCol * (1.0 + uBurst * 0.45);
+      vAlong = aAlong;
+      vSeed = aSeed;
+      vAlpha = fBoost * uDim;
+    }
+  `;
+  const WEB_FS = `
+    precision highp float;
+    uniform float uTime;
+    uniform float uBurst;
+    uniform float uDensity;
+    varying vec3 vCol;
+    varying float vAlong;
+    varying float vSeed;
+    varying float vAlpha;
+    void main() {
+      float pulsePos = fract(uTime * (0.18 + vSeed * 0.25) + vSeed * 7.3);
+      float k = max(0.0, 1.0 - abs(vAlong - pulsePos) * 6.5);
+      float k2 = k * k;
+      float spark = k2 * k2;
+      float base = (0.076 + spark * (0.33 + uBurst * 0.36)) * uDensity;
+      vec3 col = mix(vCol, vec3(0.92, 0.97, 1.0), spark * 0.56);
+      gl_FragColor = vec4(col * base * vAlpha, base * vAlpha);
+    }
+  `;
+
+  // ---- SHADER C: 1:1 REAL MEMORY COMET DATA-FLOW STREAKS (NaN-SAFE) ----
+  const COMET_VS = `
+    precision highp float;
+    attribute vec3 aStart;
+    attribute vec3 aDir;
+    attribute vec3 aCol;
+    attribute float aEnd;
+    attribute float aSeed;
+    attribute float aPool;
+    attribute float aMatch;
+    uniform mat4 uMVP;
+    uniform float uTime;
+    uniform float uFocusPool;
+    uniform float uBurst;
+    uniform float uBurstPhase;
+    uniform float uSearchActive;
+    varying vec3 vCol;
+    varying float vEnd;
+    varying float vFade;
+    void main() {
+      float poolHit = (uFocusPool < -0.5) ? 1.0 : ((abs(aPool - uFocusPool) < 0.3) ? 1.35 : 0.08);
+      float mBoost = (uSearchActive > 0.5) ? ((aMatch > 0.5) ? 1.45 : 0.06) : 1.0;
+      float spd = (0.22 + aSeed * 0.36) * ((aMatch > 0.5 && uSearchActive > 0.5) ? 1.25 : 1.0);
+      float life = fract(aSeed * 13.7 + uTime * spd + uBurstPhase * (0.35 + aSeed * 0.55));
+      float len = 0.18 + aSeed * 0.24;
+      float uPos = mix(max(0.0, life - len), life, aEnd);
+      vec3 p = aStart + aDir * uPos;
+      float rot = uTime * 0.018;
+      float c = cos(rot), s = sin(rot);
+      p = vec3(p.x * c - p.z * s, p.y, p.x * s + p.z * c);
+      gl_Position = uMVP * vec4(p, 1.0);
+      vCol = mix(aCol, vec3(1.0, 0.99, 1.0), aEnd * 0.88);
+      vEnd = aEnd;
+      vFade = max(0.0, sin(life * 3.14159)) * poolHit * mBoost;
+    }
+  `;
+  const COMET_FS = `
+    precision highp float;
+    varying vec3 vCol;
+    varying float vEnd;
+    varying float vFade;
+    void main() {
+      float e = clamp(vEnd, 0.0, 1.0);
+      float a = (e * e) * clamp(vFade, 0.0, 1.28) * 0.86;
+      gl_FragColor = vec4(vCol * a * 1.28, a);
+    }
+  `;
+
+  // ---- SHADER C2: INCOMING NEW-STAR DATA-FLOW STREAMS (REUSES EXACT COMET_FS!) ----
+  const ARR_VS = `
+    precision highp float;
+    attribute vec3 aPos;
+    attribute vec3 aCol;
+    attribute float aEnd;
+    attribute float aFade;
+    uniform mat4 uMVP;
+    uniform float uTime;
+    varying vec3 vCol;
+    varying float vEnd;
+    varying float vFade;
+    void main() {
+      float rot = uTime * 0.018;
+      float c = cos(rot), s = sin(rot);
+      vec3 p = vec3(aPos.x * c - aPos.z * s, aPos.y, aPos.x * s + aPos.z * c);
+      gl_Position = uMVP * vec4(p, 1.0);
+      vCol = mix(aCol, vec3(1.0, 0.99, 1.0), aEnd * 0.88);
+      vEnd = aEnd;
+      vFade = aFade;
+    }
+  `;
+
+  // ---- SHADER D: 1:1 REAL MEMORY STARS + DEEP COSMOS BACKDROP (NaN-SAFE) ----
+  const STAR_VS = `
+    precision highp float;
+    attribute vec3 aPos;
+    attribute vec3 aCol;
+    attribute float aSize;
+    attribute float aSeed;
+    attribute float aPool;
+    attribute float aMatch;
+    uniform mat4 uMVP;
+    uniform float uTime;
+    uniform float uDpr;
+    uniform float uFocusPool;
+    uniform float uBurst;
+    uniform float uDim;
+    uniform float uSearchActive;
+    varying vec3 vCol;
+    varying float vAlpha;
+    void main() {
+      float rot = uTime * (aPool > 4.5 ? 0.004 : 0.018);
+      float c = cos(rot), s = sin(rot);
+      vec3 p = vec3(aPos.x * c - aPos.z * s, aPos.y, aPos.x * s + aPos.z * c);
+      vec4 clip = uMVP * vec4(p, 1.0);
+      gl_Position = clip;
+      float depth = clamp(4.2 / max(0.7, clip.w), 0.35, 2.4);
+      float tw = 0.78 + 0.22 * sin(uTime * (1.8 + aSeed * 3.0) + aSeed * 25.0);
+      float isHit = (uSearchActive > 0.5 && aPool < 4.5) ? ((aMatch > 0.5) ? 1.75 : 0.16) : 1.0;
+      gl_PointSize = clamp(aSize * depth * uDpr * ((aMatch > 0.5 && uSearchActive > 0.5 && aPool < 4.5) ? 1.45 : 1.0), 1.0, 16.0);
+      float fBoost = (uFocusPool < -0.5 || aPool > 4.5) ? 1.0 : ((abs(aPool - uFocusPool) < 0.3) ? 1.65 : 0.10);
+      vCol = aCol * (1.0 + uBurst * 0.32);
+      float baseA = (aPool > 4.5) ? (0.14 + 0.32 * aSeed) : (0.42 + 0.52 * aSeed);
+      vAlpha = clamp(baseA * tw * fBoost * isHit * (aPool > 4.5 ? 1.0 : mix(uDim, 1.0, aMatch)), 0.0, 1.0);
+    }
+  `;
+  const STAR_FS = `
+    precision highp float;
+    varying vec3 vCol;
+    varying float vAlpha;
+    void main() {
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = length(uv) * 2.0;
+      if (d > 1.0) discard;
+      float core = exp(-d * d * 18.0);
+      float h = max(0.0, 1.0 - d);
+      float halo = h * h * h * 0.32;
+      float I = core + halo;
+      vec3 col = mix(vCol, vec3(1.0), core * 0.45);
+      gl_FragColor = vec4(col * I * vAlpha, I * vAlpha);
+    }
+  `;
+
+  // ---- SHADER E: DUAL-SCALE MULTI-PASS HDR BLOOM + ACES FILMIC COMPOSITE ----
+  const QUAD_VS = `attribute vec2 aPos; varying vec2 vUv; void main(){ vUv=aPos*0.5+0.5; gl_Position=vec4(aPos,0.0,1.0); }`;
+  const BRIGHT_FS = `
+    precision highp float;
+    uniform sampler2D uTex; varying vec2 vUv;
+    void main() {
+      vec3 c = texture2D(uTex, vUv).rgb;
+      float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      float s = smoothstep(0.22, 0.88, lum);
+      gl_FragColor = vec4(c * s * 1.04, 1.0);
+    }
+  `;
+  const BLUR_FS = `
+    precision highp float;
+    uniform sampler2D uTex; uniform vec2 uDir; varying vec2 vUv;
+    void main() {
+      vec3 sum = texture2D(uTex, vUv).rgb * 0.227027;
+      sum += texture2D(uTex, vUv + uDir * 1.384615).rgb * 0.316216;
+      sum += texture2D(uTex, vUv - uDir * 1.384615).rgb * 0.316216;
+      sum += texture2D(uTex, vUv + uDir * 3.230769).rgb * 0.070270;
+      sum += texture2D(uTex, vUv - uDir * 3.230769).rgb * 0.070270;
+      gl_FragColor = vec4(sum, 1.0);
+    }
+  `;
+  const COMP_FS = `
+    precision highp float;
+    uniform sampler2D uScene;
+    uniform sampler2D uBloomTight;
+    uniform sampler2D uBloomWide;
+    varying vec2 vUv;
+    void main() {
+      // Pure deep cosmos obsidian with whisper of dark space-blue depth
+      vec2 d = (vUv - vec2(0.50, 0.48)) * vec2(1.45, 1.0);
+      vec3 bg = mix(vec3(0.014, 0.022, 0.038), vec3(0.004, 0.006, 0.011), smoothstep(0.0, 0.95, length(d)));
+      vec3 sc = texture2D(uScene, vUv).rgb;
+      vec3 bt = texture2D(uBloomTight, vUv).rgb;
+      vec3 bw = texture2D(uBloomWide, vUv).rgb;
+      vec3 col = bg + sc * 0.97 + bt * 0.41 + bw * 0.36;
+      // ACES Filmic tone mapping -> crisp highlights, rich deep-space saturation!
+      col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+    }
+  `;
+
+  // ===== BUILD ALL GPU GEOMETRY BUFFERS (1:1 REAL MEMORY COSMOS) =====
+  let SNAP = window.MEMORY_SNAPSHOT;
+  if (!SNAP || !Array.isArray(SNAP.items) || SNAP.items.length === 0) {
+    document.getElementById('liveFeed').textContent = '暂无可显示的记忆。';
+    return;
+  }
+  const connection = parent.m1Connection;
+  const resumed = parent.m1Scene && parent.m1Scene.connection === connection ? parent.m1Scene.state : null;
+  let scene = resumed ? M1Live.merge(resumed, SNAP) : M1Live.anchor(SNAP.items);
+  if (parent.m1Connection === connection) parent.m1Scene = { connection, state: scene };
+  let RAW_ITEMS = scene.items;
+  let N_MEM = RAW_ITEMS.length;
+  let arrivals = null;
+  const POOL_COLS = [
+    [0.40, 0.68, 1.00], // 0: Active L0/L1 electric starry blue
+    [0.92, 0.68, 0.38], // 1: Short-term 3d warm golden amber
+    [0.74, 0.44, 0.98], // 2: Intimate cosmic violet-rose
+    [0.34, 0.86, 0.68], // 3: Schedule / Working emerald-teal
+    [0.48, 0.62, 0.80]  // 4: Cold archive cool slate-blue
+  ];
+  const visPoolOf = m => {
+    const a = m.appearance || m;
+    return (a.sc === 1 || a.p === 4) ? 3 : (a.p === 0 ? 0 : a.p === 1 ? 1 : a.p === 2 ? 2 : 4);
+  };
+  let NODES = [], ANCHORS = [], searchActiveFlag = 0.0;
+
+  let progRing, progWeb, progComet, progArrFlow, progStar, progBright, progBlur, progComp;
+  let bufQuad, bufRingQuads, bufRingRails, bufWeb, bufComets, bufStars, bufStarMatch, bufCometMatch, bufArrLines, bufArrStars, bufArrStarMatch;
+  let cntRingQuads = 0, cntRingRails = 0, cntWeb = 0, cntComets = 0, cntStars = 0;
+  let fboScene, fboH1, fboH2, fboQ1, fboQ2;
+
+  function makeFBO(w, h) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { fbo, tex, w, h, ok };
+  }
+  function rebuildFBOs() {
+    if (!gl) return;
+    [fboScene, fboH1, fboH2, fboQ1, fboQ2].forEach(f => { if (f) { gl.deleteFramebuffer(f.fbo); gl.deleteTexture(f.tex); } });
+    const w = Math.max(64, glCanvas.width), h = Math.max(64, glCanvas.height);
+    fboScene = makeFBO(w, h);
+    fboH1 = makeFBO(Math.max(4, w>>1), Math.max(4, h>>1));
+    fboH2 = makeFBO(Math.max(4, w>>1), Math.max(4, h>>1));
+    fboQ1 = makeFBO(Math.max(4, w>>2), Math.max(4, h>>2));
+    fboQ2 = makeFBO(Math.max(4, w>>2), Math.max(4, h>>2));
+  }
+
+  function buildGeometry() {
+    seed = 2026112199;
+    // 1. MONUMENTAL 3D MECHANICAL RING CHASSIS (3,600+ glowing 3D arc-block slabs across 7 concentric tiers + Y thickness!)
+    const rq = [];
+    const addArcQuad = (rIn, rOut, a0, a1, y, col, phase, bright) => {
+      const c0=Math.cos(a0), s0=Math.sin(a0), c1=Math.cos(a1), s1=Math.sin(a1);
+      const p00=[c0*rIn, y, s0*rIn], p01=[c0*rOut, y, s0*rOut];
+      const p10=[c1*rIn, y, s1*rIn], p11=[c1*rOut, y, s1*rOut];
+      const push = p => rq.push(p[0],p[1],p[2], col[0],col[1],col[2], phase, bright);
+      push(p00); push(p01); push(p11);
+      push(p00); push(p11); push(p10);
+    };
+
+    const ringTracks = [
+      // rIn,   rOut,  count, yOff, dir, baseCol,                   density
+      [1.37, 1.388, 380,  0.022,  1, [0.76, 0.88, 0.96], 0.86], // Innermost razor vernier ticks
+      [1.398,1.434, 260,  0.008,  1, [0.54, 0.84, 0.94], 0.76], // Sleek cyan-silver segmented data blocks
+      [1.442,1.464, 200, -0.020, -1, [0.85, 0.75, 0.58], 0.54], // Subtle champagne-amber counter-ring
+      [1.476,1.516, 300,  0.028,  1, [0.68, 0.82, 0.92], 0.80], // Main dense telemetry ledger array
+      [1.524,1.548, 280, -0.026, -1, [0.46, 0.74, 0.88], 0.68], // Lower depth parallel cyan blocks
+      [1.564,1.608, 220,  0.006,  1, [0.78, 0.86, 0.94], 0.72], // Outer structural armor segments
+      [1.622,1.652, 340, -0.012, -1, [0.42, 0.58, 0.74], 0.56], // Outer staggered fin ticks
+      [1.668,1.694, 180,  0.036,  1, [0.55, 0.76, 0.88], 0.44]  // Elevated upper crown ticks
+    ];
+    ringTracks.forEach(([rIn, rOut, count, yOff, dir, col, dens]) => {
+      const step = (Math.PI * 2) / count;
+      for (let i = 0; i < count; i++) {
+        const a = i * step;
+        // Honest "历史缺测" darkened gap sector around angle 3.7..4.25 rad
+        const inMissing = (a > 3.75 && a < 4.22);
+        if (inMissing && rnd() > 0.22) continue;
+        if (rnd() > dens) continue;
+        const fillFrac = (i % 8 === 0) ? 0.78 : (0.28 + rnd() * 0.46);
+        const isNow = (a > 0.62 && a < 0.70);
+        const c = isNow ? [1.0, 0.90, 0.70] : [col[0]*(0.8+rnd()*0.35), col[1]*(0.8+rnd()*0.35), col[2]*(0.85+rnd()*0.25)];
+        const br = isNow ? 1.0 : inMissing ? 0.14 : (0.22 + rnd() * 0.70);
+        addArcQuad(rIn, rOut, a, a + step * fillFrac, yOff, c, dir * (i / count), br);
+        // Mirror slight bottom thickness for real 3D parallax in close-up!
+        if (i % 3 === 0) {
+          addArcQuad(rIn + 0.005, rOut - 0.005, a, a + step * fillFrac, yOff - 0.045, [c[0]*0.55, c[1]*0.65, c[2]*0.78], dir * (i / count), br * 0.48);
+        }
+      }
+    });
+    cntRingQuads = rq.length / 8;
+    if (!bufRingQuads) bufRingQuads = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufRingQuads);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(rq), gl.STATIC_DRAW);
+
+    // 2. RAZOR-CRISP CONCENTRIC STRUCTURAL RAILS + RADIAL CROSS-STRUTS (gl.LINES)
+    const rr = [];
+    const addRailCircle = (rad, y, col, br, segs = 220) => {
+      for (let i = 0; i < segs; i++) {
+        const a0 = (i / segs) * Math.PI * 2, a1 = ((i + 1) / segs) * Math.PI * 2;
+        const miss = (a0 > 3.75 && a0 < 4.22) ? 0.22 : 1.0;
+        rr.push(Math.cos(a0)*rad, y, Math.sin(a0)*rad, col[0],col[1],col[2], i/segs, br*miss,
+                Math.cos(a1)*rad, y, Math.sin(a1)*rad, col[0],col[1],col[2], (i+1)/segs, br*miss);
+      }
+    };
+    [
+      [1.362,  0.022, [0.82, 0.92, 1.00], 0.72],
+      [1.394,  0.008, [0.60, 0.85, 0.95], 0.50],
+      [1.470,  0.028, [0.76, 0.88, 0.98], 0.62],
+      [1.470, -0.030, [0.46, 0.68, 0.86], 0.36],
+      [1.556,  0.006, [0.80, 0.88, 0.95], 0.56],
+      [1.615, -0.012, [0.54, 0.74, 0.88], 0.44],
+      [1.660,  0.036, [0.70, 0.82, 0.92], 0.38],
+      [1.706,  0.000, [0.42, 0.58, 0.74], 0.28]
+    ].forEach(([r,y,c,b]) => addRailCircle(r, y, c, b));
+
+    // 72 Radial Structural Ribs across the ring chassis
+    for (let i = 0; i < 72; i++) {
+      const a = (i / 72) * Math.PI * 2;
+      const major = i % 6 === 0;
+      const c = major ? [0.78, 0.90, 0.98] : [0.48, 0.65, 0.80];
+      const b = major ? 0.48 : 0.20;
+      rr.push(Math.cos(a)*1.362, 0.022, Math.sin(a)*1.362, c[0],c[1],c[2], i/72, b,
+              Math.cos(a)*1.706, 0.000, Math.sin(a)*1.706, c[0],c[1],c[2], i/72, b);
+    }
+    cntRingRails = rr.length / 8;
+    if (!bufRingRails) bufRingRails = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufRingRails);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(rr), gl.STATIC_DRAW);
+
+    // 3. STRICT 1:1 REAL MEMORY NODES (EXACTLY N_MEM = SNAP.items.length NODES!)
+    NODES = RAW_ITEMS.map(m => {
+      const vp = visPoolOf(m);
+      const [x, y, z] = m.pos;
+      const rad = Math.hypot(x, y, z);
+      const coreMix = Math.exp(-rad * rad * 4.0) * 0.72;
+      const bc = POOL_COLS[vp];
+      const col = [
+        bc[0] + (0.96 - bc[0]) * coreMix,
+        bc[1] + (0.98 - bc[1]) * coreMix,
+        bc[2] + (1.00 - bc[2]) * coreMix
+      ];
+      return { x, y, z, col, pool: vp, rad, m };
+    });
+
+    const poolLbl = SNAP.poolLabels;
+    ANCHORS = RAW_ITEMS.map(m => {
+      const vp = visPoolOf(m);
+      const pName = m.sc ? '课表/工作窗' : (m.p === 0 ? `活跃 L${m.ag <= 7 ? 0 : (m.ag <= 30 ? 1 : 2)}` : m.label || poolLbl[m.p]);
+      const entStr = m.en.length ? m.en.join(' · ') : (m.tg[0] || m.k);
+      const kw = [m.t, m.id, m.k, pName, ...m.en, ...m.tg].join(' ').toLowerCase();
+      return {
+        id: m.i, key: m.key, memId: m.id, pool: vp, rawPool: m.p, title: m.t.slice(0,22) + (m.t.length>22 ? '…' : ''),
+        badge: `${pName} · 地板 ${m.f.toFixed(1)} · ${m.k}`,
+        desc: `${m.en.length ? '关联实体「' + m.en.join('、') + '」；' : ''}归属${poolLbl[m.p]}池（强度 ${m.s.toFixed(1)} / 真实地板 ${m.f.toFixed(1)}），实时出边 ${(m.lk||[]).length} 条。`,
+        floor: `${m.s.toFixed(1)} / ${m.f.toFixed(1)}`,
+        tri: `${m.s.toFixed(0)} / ${m.im.toFixed(0)} / ${m.em.toFixed(0)}`,
+        ent: `${entStr} · ${(m.lk||[]).length} 边`,
+        kw, s: m.s, f: m.f, imp: m.im, emo: m.em, p: m.pos,
+        links: (m.lk || []).map(x => x[0]), lkRaw: m.lk || [], en: m.en, sc: m.sc, rc: m.rc
+      };
+    });
+
+    // 3b. LOCAL 3D-CELL OPTICAL ATTENUATION (prevents 8-bit additive saturation in dense clusters)
+    const cellCnt = new Map();
+    NODES.forEach(n => {
+      const ck = `${Math.round(n.x * 5)},${Math.round(n.y * 5)},${Math.round(n.z * 5)}`;
+      n._ck = ck;
+      cellCnt.set(ck, (cellCnt.get(ck) || 0) + 1);
+    });
+    NODES.forEach(n => {
+      n.densAtten = 1.0 / Math.sqrt(Math.max(1.0, (cellCnt.get(n._ck) || 1) / 4.0));
+    });
+
+    // 4. REAL SYNAPTIC WEB FROM ACTUAL bge-m3 + ENTITY + ±3D COMPUTED EDGES
+    const web = [];
+    const REASON_TINT = [[0.42,0.72,1.00], [0.92,0.70,0.34], [0.34,0.88,0.68]];
+    NODES.forEach(a => {
+      (a.m.lk || []).forEach(([tIdx, rType]) => {
+        const b = NODES[tIdx];
+        if (!b) return;
+        const rc = REASON_TINT[rType] || a.col;
+        const att = 0.35 + 0.65 * Math.min(a.densAtten, b.densAtten);
+        const cA = [(a.col[0]*0.6 + rc[0]*0.4)*att, (a.col[1]*0.6 + rc[1]*0.4)*att, (a.col[2]*0.6 + rc[2]*0.4)*att];
+        const sd = rnd();
+        web.push(a.x,a.y,a.z, cA[0],cA[1],cA[2], 0.0, sd, a.pool,
+                 b.x,b.y,b.z, cA[0],cA[1],cA[2], 1.0, sd, a.pool);
+      });
+    });
+    const entGroups = new Map();
+    NODES.forEach(n => (n.m.edgeEntities || n.m.en || []).forEach(e => { if (!entGroups.has(e)) entGroups.set(e, []); entGroups.get(e).push(n); }));
+    entGroups.forEach(grp => {
+      const step = grp.length > 26 ? Math.ceil(grp.length / 26) : 1;
+      for (let i = 0; i < grp.length - step; i += step) {
+        const a = grp[i], b = grp[i + step], sd = rnd();
+        const att = 0.42 + 0.58 * Math.min(a.densAtten, b.densAtten);
+        web.push(a.x,a.y,a.z, 0.34*att,0.85*att,0.68*att, 0.0, sd, a.pool,
+                 b.x,b.y,b.z, 0.34*att,0.85*att,0.68*att, 1.0, sd, a.pool);
+      }
+    });
+    cntWeb = web.length / 9;
+    if (!bufWeb) bufWeb = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufWeb);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(web), gl.STATIC_DRAW);
+
+    // 5. STRICT 1:1 LIVE COMET DATA-FLOW STREAMS: EXACTLY N_MEM = SNAP.items.length STREAMS!
+    const cm = [];
+    const cmMatch = new Float32Array(N_MEM * 2);
+    NODES.forEach((n, idx) => {
+      const tgtIdx = (n.m.lk && n.m.lk.length > 0) ? n.m.lk[0][0] : ((idx + 1) % N_MEM);
+      const tgt = NODES[tgtIdx] || { x: 0, y: 0, z: 0 };
+      let dx = tgt.x - n.x, dy = tgt.y - n.y, dz = tgt.z - n.z;
+      if (Math.hypot(dx, dy, dz) < 0.05) { dx = -n.x * 0.7; dy = -n.y * 0.7; dz = -n.z * 0.7; }
+      const baseCol = POOL_COLS[n.pool];
+      const ca = 0.48 + 0.52 * n.densAtten;
+      const col = [baseCol[0]*ca, baseCol[1]*ca, baseCol[2]*ca];
+      const sd = 0.25 + (n.m.s / 100) * 0.65 + (idx % 17) * 0.006;
+      cm.push(n.x,n.y,n.z, dx,dy,dz, col[0],col[1],col[2], 0.0, sd, n.pool,
+              n.x,n.y,n.z, dx,dy,dz, col[0],col[1],col[2], 1.0, sd, n.pool);
+      cmMatch[idx * 2] = 1.0; cmMatch[idx * 2 + 1] = 1.0;
+    });
+    cntComets = cm.length / 12; // cntComets / 2 === N_MEM strictly 1:1!
+    if (!bufComets) bufComets = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufComets);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cm), gl.STATIC_DRAW);
+
+    if (!bufCometMatch) bufCometMatch = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufCometMatch);
+    gl.bufferData(gl.ARRAY_BUFFER, cmMatch, gl.DYNAMIC_DRAW);
+
+    // 6. 1:1 REAL MEMORY STARS (N_MEM points) + DEEP-SPACE COSMOS BACKDROP (2,600 ambient outer stars, aPool=5.0)
+    const st = [];
+    const BACKDROP = 2600;
+    const stMatch = new Float32Array(N_MEM + BACKDROP);
+    NODES.forEach((n, idx) => {
+      const ap = n.m.appearance || n.m;
+      const sz = (2.0 + (ap.s / 100) * 2.1 + (ap.rc > 0 ? 1.2 : 0)) * (0.76 + 0.24 * n.densAtten);
+      const sa = 0.48 + 0.52 * n.densAtten;
+      st.push(n.x, n.y, n.z, n.col[0]*sa, n.col[1]*sa, n.col[2]*sa, sz, 0.35 + (ap.s / 100) * 0.6, n.pool);
+      stMatch[idx] = 1.0;
+    });
+    seed = 2026112201;
+    for (let i = 0; i < BACKDROP; i++) {
+      const a = rnd() * Math.PI * 2, phi = Math.acos(2 * rnd() - 1);
+      const rad = 2.4 + rnd() * 5.2;
+      st.push(rad*Math.sin(phi)*Math.cos(a), rad*Math.cos(phi), rad*Math.sin(phi)*Math.sin(a), 0.72, 0.84, 1.0, 0.8 + rnd()*1.1, rnd()*0.5, 5.0);
+      stMatch[N_MEM + i] = 1.0;
+    }
+    cntStars = st.length / 9;
+    if (!bufStars) bufStars = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufStars);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(st), gl.STATIC_DRAW);
+
+    if (!bufStarMatch) bufStarMatch = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufStarMatch);
+    gl.bufferData(gl.ARRAY_BUFFER, stMatch, gl.DYNAMIC_DRAW);
+  }
+
+  function initWebGL() {
+    if (!gl) return;
+    progRing = makeProg(RING_VS, RING_FS);
+    progWeb = makeProg(WEB_VS, WEB_FS);
+    progComet = makeProg(COMET_VS, COMET_FS);
+    progArrFlow = makeProg(ARR_VS, COMET_FS);
+    progStar = makeProg(STAR_VS, STAR_FS);
+    progBright = makeProg(QUAD_VS, BRIGHT_FS);
+    progBlur = makeProg(QUAD_VS, BLUR_FS);
+    progComp = makeProg(QUAD_VS, COMP_FS);
+
+    bufQuad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufQuad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+    bufArrLines = gl.createBuffer();
+    bufArrStars = gl.createBuffer();
+    bufArrStarMatch = gl.createBuffer();
+
+    buildGeometry();
+  }
+
+  function bindA(prog, name, sz, stride, off) {
+    const loc = gl.getAttribLocation(prog, name);
+    if (loc >= 0) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, sz, gl.FLOAT, false, stride, off); }
+  }
+  function drawQuad(prog, tex, fn) {
+    gl.disable(gl.BLEND);
+    gl.useProgram(prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufQuad);
+    const loc = gl.getAttribLocation(prog, 'aPos');
+    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+    if (fn) fn();
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+
+  // ===== LIVE 1:1 REAL MEMORY STATE, FILTER & GPU MATCH SYNC =====
+  let selAnchor = null, hovAnchor = null, lastMVP = null;
+  let FEATURED_IDS = new Set();
+  let searchQuery = '', matchedIds = new Set(), neighborIds = new Set(), searchDim = 1.0, targetDim = 1.0;
+
+  function syncMatchBuffers() {
+    if (!gl || !bufStarMatch || !bufCometMatch) return;
+    const BACKDROP = 2600;
+    const stM = new Float32Array(N_MEM + BACKDROP);
+    const cmM = new Float32Array(N_MEM * 2);
+    const hasQ = matchedIds.size > 0 || searchQuery.length > 0;
+    for (let i = 0; i < N_MEM; i++) {
+      const m = !hasQ || matchedIds.has(i) || (selAnchor && selAnchor.id === i) ? 1.0 : (neighborIds.has(i) ? 0.55 : 0.0);
+      stM[i] = m;
+      cmM[i * 2] = m;
+      cmM[i * 2 + 1] = m;
+    }
+    for (let i = 0; i < BACKDROP; i++) stM[N_MEM + i] = 1.0;
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufStarMatch);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, stM);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufCometMatch);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, cmM);
+  }
+
+  function populateRealHUD() {
+    const p = SNAP.pools;
+    const schedWork = ANCHORS.filter(a => a.pool === 3).length;
+    const coldCnt = ANCHORS.filter(a => a.pool === 4).length;
+    const actCnt = ANCHORS.filter(a => a.pool === 0).length;
+    const stCnt = ANCHORS.filter(a => a.pool === 1).length;
+    const intCnt = ANCHORS.filter(a => a.pool === 2).length;
+
+    document.getElementById('topMeta').textContent = `WEBGL HDR · ${N_MEM.toLocaleString()} 真实记忆 · ${N_MEM.toLocaleString()} 条 1:1 数据流 · ${SNAP.edge_counts.total.toLocaleString()} 关联边`;
+    document.getElementById('poolChips').innerHTML = [
+      [-1, `全宇宙 ${N_MEM.toLocaleString()}`],
+      [0, `活跃 ${actCnt}`],
+      [1, `短期 ${stCnt}`],
+      [2, `亲密 ${intCnt}`],
+      [3, `课表/工作 ${schedWork}`],
+      [4, `冷存 ${coldCnt}`]
+    ].map(([id, txt]) => `<span class="chip${id === focusPool ? ' active' : ''}" data-p="${id}">${txt}</span>`).join('');
+
+    document.querySelectorAll('#poolChips .chip').forEach(ch => ch.addEventListener('click', () => {
+      document.querySelectorAll('#poolChips .chip').forEach(x => x.classList.remove('active'));
+      ch.classList.add('active'); focusPool = Number(ch.dataset.p); burst = 0.55;
+      updateFlowMetric();
+    }));
+
+    document.getElementById('botMetrics').innerHTML = `
+      <span class="bm hi">活跃<strong>${p.active}</strong></span>
+      <span class="bm">短期 3d<strong>${p.shortterm}</strong></span>
+      <span class="bm">亲密 70<strong>${p.intimate}</strong></span>
+      <span class="bm">冷存<strong>${p.cold}</strong></span>
+      <span class="bm">工作<strong>${p.working}</strong></span>
+      <span class="bm">实体簇<strong>${SNAP.entities.length}</strong></span>
+      <span class="bm hi">1:1数据流<strong id="cometCnt">${N_MEM} / ${N_MEM}</strong></span>
+    `;
+
+    // Pick top 12 prominent real nodes spanning entities & pools as default soft reticles
+    const picks = [];
+    const byScore = [...ANCHORS].sort((a, b) => (b.en.length * 15 + b.s + (b.sc ? 20 : 0)) - (a.en.length * 15 + a.s + (a.sc ? 20 : 0)));
+    for (const a of byScore) {
+      if (picks.length >= 12) break;
+      if (picks.filter(x => x.pool === a.pool).length < 4) picks.push(a);
+    }
+    FEATURED_IDS = new Set(picks.map(x => x.id));
+    if (selAnchor) selAnchor = ANCHORS.find(a => a.key === selAnchor.key) || byScore[0];
+    else selAnchor = byScore[0];
+  }
+
+  function updateFlowMetric() {
+    const el = document.getElementById('cometCnt');
+    if (!el) return;
+    if (searchQuery) {
+      el.textContent = `${matchedIds.size} / ${N_MEM}`;
+    } else if (focusPool >= 0) {
+      const cnt = ANCHORS.filter(a => a.pool === focusPool).length;
+      el.textContent = `${cnt} / ${N_MEM}`;
+    } else {
+      el.textContent = `${N_MEM} / ${N_MEM}`;
+    }
+  }
+
+  function drawMiniCurve(a) {
+    const cv = document.getElementById('miniCurve');
+    const r = cv.getBoundingClientRect();
+    const mw = Math.max(220, r.width || 248), mh = 62;
+    cv.width = Math.round(mw * DPR); cv.height = Math.round(mh * DPR);
+    const c = cv.getContext('2d'); c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    c.clearRect(0, 0, mw, mh);
+    c.fillStyle = 'rgba(148,178,216,0.045)'; c.fillRect(0, 0, mw * 0.24, mh);
+    c.fillStyle = '#566882'; c.font = '9px sans-serif'; c.fillText('示意', 14, 34);
+    const nx = mw * 0.64;
+    c.strokeStyle = 'rgba(130,188,255,0.42)'; c.setLineDash([2,2]);
+    c.beginPath(); c.moveTo(nx, 4); c.lineTo(nx, mh-4); c.stroke(); c.setLineDash([]);
+    const fy = v => 54 - (v / 100) * 44;
+    const line = (y1, y2, y3, col, lw) => {
+      c.strokeStyle = col; c.lineWidth = lw;
+      c.beginPath(); c.moveTo(mw*0.24, fy(y1)); c.quadraticCurveTo(mw*0.44, fy((y1+y2)/2+3), nx, fy(y2)); c.stroke();
+      c.setLineDash([3,3]); c.beginPath(); c.moveTo(nx, fy(y2)); c.lineTo(mw-8, fy(y3)); c.stroke(); c.setLineDash([]);
+    };
+    const fut = a.rawPool === 3 ? a.s : Math.max(a.f, a.s - (a.rawPool === 1 ? 36 : 16));
+    line(Math.min(98, a.s+8), a.s, fut, '#659BE6', 1.65);
+    if (a.imp > 0) line(a.imp+3, a.imp, Math.max(20, a.imp-4), '#A6B6CC', 1.05);
+    line(Math.min(95, a.emo+6), a.emo, Math.max(a.emo*0.25, a.emo-14), '#837CC4', 0.8);
+  }
+  function selectAnchor(a) {
+    selAnchor = a;
+    document.getElementById('rcTitle').textContent = a.title;
+    document.getElementById('rcBadge').textContent = a.badge;
+    document.getElementById('rcDesc').textContent = a.desc;
+    document.getElementById('rcFloor').textContent = a.floor;
+    document.getElementById('rcTri').textContent = a.tri;
+    document.getElementById('rcEnt').textContent = a.ent;
+    document.getElementById('rightCard').classList.remove('hidden');
+    drawMiniCurve(a);
+  }
+
+  function projPt(p, mvp, t) {
+    const rot = t * 0.018, c = Math.cos(rot), s = Math.sin(rot);
+    const x = p[0]*c - p[2]*s, y = p[1], z = p[0]*s + p[2]*c;
+    const cx = mvp[0]*x + mvp[4]*y + mvp[8]*z + mvp[12];
+    const cy = mvp[1]*x + mvp[5]*y + mvp[9]*z + mvp[13];
+    const cw = mvp[3]*x + mvp[7]*y + mvp[11]*z + mvp[15];
+    if (cw <= 0.1) return null;
+    return { x: (cx/cw*0.5+0.5)*W, y: (-cy/cw*0.5+0.5)*H };
+  }
+
+  // ===== MASTER 60FPS GPU RENDER LOOP =====
+  let lastT = 0, fpsAcc = 0, fpsFrames = 0;
+  function render(ts) {
+    const t = ts * 0.001;
+    const dt = lastT ? Math.min(0.05, (ts - lastT) * 0.001) : 0.016;
+    if (lastT) {
+      fpsAcc += (ts - lastT); fpsFrames++;
+      if (fpsAcc > 500) {
+        document.getElementById('fpsOut').textContent = Math.round(fpsFrames * 1000 / fpsAcc) + ' FPS';
+        fpsAcc = 0; fpsFrames = 0;
+      }
+    }
+    lastT = ts;
+
+    if (burst > 0) {
+      burstPhase += dt * burst * 1.15;
+      burst = Math.max(0, burst - dt * 0.85);
+    }
+    searchDim += (targetDim - searchDim) * 0.08;
+    if (autoFly && !dragging) {
+      const cyc = (Math.sin(t * 0.35) + 1) * 0.5;
+      cam.tyaw = 0.42 - cyc * 0.28;
+      cam.tpitch = 0.62 - cyc * 0.38;
+      cam.tdist = 3.15 - cyc * 1.25;
+      cam.ttx = 0.14 + cyc * 0.32;
+    } else if (autoOrbit && !dragging) {
+      cam.tyaw += 0.0014;
+    }
+
+    cam.yaw += (cam.tyaw - cam.yaw) * 0.07;
+    cam.pitch += (cam.tpitch - cam.pitch) * 0.07;
+    cam.dist += (cam.tdist - cam.dist) * 0.07;
+    cam.roll += (cam.troll - cam.roll) * 0.07;
+    cam.tx += (cam.ttx - cam.tx) * 0.07;
+    cam.ty += (cam.tty - cam.ty) * 0.07;
+    cam.tz += (cam.ttz - cam.tz) * 0.07;
+
+    const eye = [
+      cam.tx + Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.dist,
+      cam.ty + Math.sin(cam.pitch) * cam.dist,
+      cam.tz + Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.dist
+    ];
+    // Tilted up vector creates diagonal orbital framing
+    const up = [Math.sin(cam.roll), Math.cos(cam.roll), 0];
+    const proj = mat4Perspective(46 * Math.PI / 180, Math.max(1, W) / Math.max(1, H), 0.08, 40.0);
+    const view = mat4LookAt(eye, [cam.tx, cam.ty, cam.tz], up);
+    const mvp = mat4Mul(proj, view);
+    lastMVP = mvp;
+
+    if (gl && fboScene) {
+      const useBloom = fboScene.ok && fboH1 && fboH1.ok && fboH2 && fboH2.ok && fboQ1 && fboQ1.ok && fboQ2 && fboQ2.ok;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, useBloom ? fboScene.fbo : null);
+      gl.viewport(0, 0, useBloom ? fboScene.w : glCanvas.width, useBloom ? fboScene.h : glCanvas.height);
+      gl.clearColor(0.008, 0.012, 0.022, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+
+      // 1a. 22,000+ Polychromatic Synaptic Micro-Filaments
+      gl.useProgram(progWeb);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufWeb);
+      bindA(progWeb, 'aPos', 3, 36, 0);
+      bindA(progWeb, 'aCol', 3, 36, 12);
+      bindA(progWeb, 'aAlong', 1, 36, 24);
+      bindA(progWeb, 'aSeed', 1, 36, 28);
+      bindA(progWeb, 'aPool', 1, 36, 32);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progWeb, 'uMVP'), false, mvp);
+      gl.uniform1f(gl.getUniformLocation(progWeb, 'uTime'), t);
+      gl.uniform1f(gl.getUniformLocation(progWeb, 'uFocusPool'), focusPool);
+      gl.uniform1f(gl.getUniformLocation(progWeb, 'uBurst'), burst);
+      const densityGain = Math.min(1.0, Math.sqrt(1550 / Math.max(400, N_MEM)));
+      gl.uniform1f(gl.getUniformLocation(progWeb, 'uDim'), searchDim);
+      gl.uniform1f(gl.getUniformLocation(progWeb, 'uDensity'), densityGain);
+      gl.drawArrays(gl.LINES, 0, cntWeb);
+
+      // 1b. 1:1 Real Memory Stars (1,641 memories) + Deep Cosmos Backdrop
+      gl.useProgram(progStar);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufStars);
+      bindA(progStar, 'aPos', 3, 36, 0);
+      bindA(progStar, 'aCol', 3, 36, 12);
+      bindA(progStar, 'aSize', 1, 36, 24);
+      bindA(progStar, 'aSeed', 1, 36, 28);
+      bindA(progStar, 'aPool', 1, 36, 32);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufStarMatch);
+      bindA(progStar, 'aMatch', 1, 4, 0);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progStar, 'uMVP'), false, mvp);
+      gl.uniform1f(gl.getUniformLocation(progStar, 'uTime'), t);
+      gl.uniform1f(gl.getUniformLocation(progStar, 'uDpr'), DPR);
+      gl.uniform1f(gl.getUniformLocation(progStar, 'uFocusPool'), focusPool);
+      gl.uniform1f(gl.getUniformLocation(progStar, 'uBurst'), burst);
+      gl.uniform1f(gl.getUniformLocation(progStar, 'uDim'), searchDim);
+      gl.uniform1f(gl.getUniformLocation(progStar, 'uSearchActive'), searchActiveFlag);
+      gl.drawArrays(gl.POINTS, 0, cntStars);
+
+      // 1c. Strict 1:1 Real Memory Comet Data-Flow Streaks (1 stream per real memory!)
+      gl.useProgram(progComet);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufComets);
+      bindA(progComet, 'aStart', 3, 48, 0);
+      bindA(progComet, 'aDir', 3, 48, 12);
+      bindA(progComet, 'aCol', 3, 48, 24);
+      bindA(progComet, 'aEnd', 1, 48, 36);
+      bindA(progComet, 'aSeed', 1, 48, 40);
+      bindA(progComet, 'aPool', 1, 48, 44);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufCometMatch);
+      bindA(progComet, 'aMatch', 1, 4, 0);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progComet, 'uMVP'), false, mvp);
+      gl.uniform1f(gl.getUniformLocation(progComet, 'uTime'), t);
+      gl.uniform1f(gl.getUniformLocation(progComet, 'uFocusPool'), focusPool);
+      gl.uniform1f(gl.getUniformLocation(progComet, 'uBurst'), burst);
+      gl.uniform1f(gl.getUniformLocation(progComet, 'uBurstPhase'), burstPhase);
+      gl.uniform1f(gl.getUniformLocation(progComet, 'uSearchActive'), searchActiveFlag);
+      gl.drawArrays(gl.LINES, 0, cntComets);
+      drawWebGLArrivals(mvp, t, searchActiveFlag);
+
+      // 1d. Monumental 3D Mechanical Ring Rails + 3,600+ Segmented Glow Slabs
+      gl.useProgram(progRing);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progRing, 'uMVP'), false, mvp);
+      gl.uniform1f(gl.getUniformLocation(progRing, 'uTime'), t);
+      gl.uniform1f(gl.getUniformLocation(progRing, 'uBurst'), burst);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufRingRails);
+      bindA(progRing, 'aPos', 3, 32, 0);
+      bindA(progRing, 'aCol', 3, 32, 12);
+      bindA(progRing, 'aPhase', 1, 32, 24);
+      bindA(progRing, 'aBright', 1, 32, 28);
+      gl.drawArrays(gl.LINES, 0, cntRingRails);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufRingQuads);
+      bindA(progRing, 'aPos', 3, 32, 0);
+      bindA(progRing, 'aCol', 3, 32, 12);
+      bindA(progRing, 'aPhase', 1, 32, 24);
+      bindA(progRing, 'aBright', 1, 32, 28);
+      gl.drawArrays(gl.TRIANGLES, 0, cntRingQuads);
+
+      if (fboScene.ok && fboH1.ok && fboH2.ok && fboQ1.ok && fboQ2.ok) {
+        // PASS 2: BRIGHT EXTRACT -> HALF-RES (TIGHT BLOOM) & QUARTER-RES (WIDE NEBULA HALO)
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fboH1.fbo);
+        gl.viewport(0, 0, fboH1.w, fboH1.h);
+        drawQuad(progBright, fboScene.tex, () => gl.uniform1i(gl.getUniformLocation(progBright, 'uTex'), 0));
+
+        for (let p = 0; p < 2; p++) {
+          const sp = 1.3 + p * 1.0;
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fboH2.fbo);
+          drawQuad(progBlur, fboH1.tex, () => { gl.uniform1i(gl.getUniformLocation(progBlur, 'uTex'), 0); gl.uniform2f(gl.getUniformLocation(progBlur, 'uDir'), sp / fboH1.w, 0); });
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fboH1.fbo);
+          drawQuad(progBlur, fboH2.tex, () => { gl.uniform1i(gl.getUniformLocation(progBlur, 'uTex'), 0); gl.uniform2f(gl.getUniformLocation(progBlur, 'uDir'), 0, sp / fboH1.h); });
+        }
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fboQ1.fbo);
+        gl.viewport(0, 0, fboQ1.w, fboQ1.h);
+        drawQuad(progBlur, fboH1.tex, () => { gl.uniform1i(gl.getUniformLocation(progBlur, 'uTex'), 0); gl.uniform2f(gl.getUniformLocation(progBlur, 'uDir'), 1.8 / fboQ1.w, 0); });
+        for (let p = 0; p < 2; p++) {
+          const sp = 2.0 + p * 1.4;
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fboQ2.fbo);
+          drawQuad(progBlur, fboQ1.tex, () => { gl.uniform1i(gl.getUniformLocation(progBlur, 'uTex'), 0); gl.uniform2f(gl.getUniformLocation(progBlur, 'uDir'), sp / fboQ1.w, 0); });
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fboQ1.fbo);
+          drawQuad(progBlur, fboQ2.tex, () => { gl.uniform1i(gl.getUniformLocation(progBlur, 'uTex'), 0); gl.uniform2f(gl.getUniformLocation(progBlur, 'uDir'), 0, sp / fboQ1.h); });
+        }
+
+        // PASS 3: ACES FILMIC COMPOSITE TO SCREEN
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+        gl.disable(gl.BLEND);
+        gl.useProgram(progComp);
+        gl.bindBuffer(gl.ARRAY_BUFFER, bufQuad);
+        const loc = gl.getAttribLocation(progComp, 'aPos');
+        gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, fboScene.tex); gl.uniform1i(gl.getUniformLocation(progComp, 'uScene'), 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, fboH1.tex); gl.uniform1i(gl.getUniformLocation(progComp, 'uBloomTight'), 1);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, fboQ1.tex); gl.uniform1i(gl.getUniformLocation(progComp, 'uBloomWide'), 2);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      }
+    }
+
+    // CRISP 2D HUD: SELECTED / SEARCH CONSTELLATION 2-HOP BEAMS + RETICLES + LABELS
+    hud.clearRect(0, 0, W, H);
+    const hasSearch = searchQuery.length > 0;
+    const screenMap = new Map();
+    const hudSet = new Set(FEATURED_IDS);
+    if (selAnchor) {
+      hudSet.add(selAnchor.id);
+      (selAnchor.links || []).forEach(tid => hudSet.add(tid));
+    }
+    if (hovAnchor) hudSet.add(hovAnchor.id);
+    let hitRenderCnt = 0;
+    if (hasSearch) {
+      for (const id of matchedIds) {
+        if (hitRenderCnt++ >= 36) break;
+        hudSet.add(id);
+        (ANCHORS[id].links || []).slice(0, 2).forEach(lid => hudSet.add(lid));
+      }
+    }
+    hudSet.forEach(id => {
+      const a = ANCHORS[id];
+      if (!a) return;
+      const sp = projPt(a.p, mvp, t);
+      if (sp) screenMap.set(id, sp);
+    });
+
+    const drawArc = (a, b, bright) => {
+      const p1 = screenMap.get(a.id), p2 = screenMap.get(b.id);
+      if (!p1 || !p2) return;
+      const mx = (p1.x + p2.x) * 0.5, my = (p1.y + p2.y) * 0.5 - 28;
+      hud.save();
+      hud.strokeStyle = bright ? 'rgba(130, 198, 255, 0.78)' : 'rgba(130, 188, 255, 0.28)';
+      hud.lineWidth = bright ? 1.5 : 0.9;
+      if (!bright) hud.setLineDash([4, 4]);
+      hud.beginPath(); hud.moveTo(p1.x, p1.y); hud.quadraticCurveTo(mx, my, p2.x, p2.y); hud.stroke();
+      const u = (t * (bright ? 0.65 : 0.35) + a.id * 0.21) % 1;
+      const m = 1 - u;
+      const sx = m*m*p1.x + 2*m*u*mx + u*u*p2.x;
+      const sy = m*m*p1.y + 2*m*u*my + u*u*p2.y;
+      hud.fillStyle = '#FFFFFF';
+      hud.shadowColor = '#78BCFF'; hud.shadowBlur = 8;
+      hud.beginPath(); hud.arc(sx, sy, bright ? 2.4 : 1.6, 0, Math.PI * 2); hud.fill();
+      hud.restore();
+    };
+
+    hudSet.forEach(id => {
+      const a = ANCHORS[id];
+      if (!a) return;
+      const isMatch = matchedIds.has(id);
+      if ((hasSearch && isMatch) || (!hasSearch && selAnchor && id === selAnchor.id)) {
+        (a.links || []).forEach(tid => {
+          const target = ANCHORS[tid];
+          if (target) drawArc(a, target, hasSearch ? (isMatch && matchedIds.has(tid)) : true);
+        });
+      }
+    });
+
+    let pillCount = 0;
+    hudSet.forEach(id => {
+      const a = ANCHORS[id];
+      const sp = screenMap.get(id);
+      if (!a || !sp || sp.x < 20 || sp.x > W - 20 || sp.y < 52 || sp.y > H - 56) return;
+      const isSel = selAnchor && a.id === selAnchor.id;
+      const isHov = a === hovAnchor;
+      const isMatch = matchedIds.has(a.id);
+      const isNbr = neighborIds.has(a.id);
+
+      if (isSel || (hasSearch && isMatch && pillCount < 14)) {
+        if (!isSel) pillCount++;
+        const ph = (t * 0.65 + a.id * 0.17) % 1;
+        hud.strokeStyle = `rgba(146, 206, 255, ${((1 - ph) * 0.65).toFixed(2)})`;
+        hud.lineWidth = 1;
+        hud.beginPath(); hud.arc(sp.x, sp.y, 10 + ph * 22, 0, Math.PI * 2); hud.stroke();
+        hud.strokeStyle = isSel ? '#FFFFFF' : '#8AC4FF'; hud.lineWidth = isSel ? 1.45 : 1.15;
+        hud.beginPath(); hud.arc(sp.x, sp.y, isSel ? 10 : 8, 0, Math.PI * 2); hud.stroke();
+        hud.fillStyle = '#FFFFFF';
+        hud.beginPath(); hud.arc(sp.x, sp.y, isSel ? 2.8 : 2.2, 0, Math.PI * 2); hud.fill();
+        hud.font = (isSel ? '600 ' : '500 ') + '10.5px "PingFang SC", sans-serif';
+        const tw = hud.measureText(a.title).width;
+        hud.fillStyle = isSel ? 'rgba(10, 18, 32, 0.90)' : 'rgba(6, 10, 18, 0.80)';
+        hud.strokeStyle = isSel ? 'rgba(155, 208, 255, 0.72)' : 'rgba(120, 178, 245, 0.42)'; hud.lineWidth = 0.9;
+        hud.beginPath(); hud.roundRect(sp.x + 14, sp.y - 10, tw + 14, 20, 4); hud.fill(); hud.stroke();
+        hud.fillStyle = '#EDF5FF'; hud.textAlign = 'left';
+        hud.fillText(a.title, sp.x + 21, sp.y + 3.5);
+      } else if (hasSearch && isNbr && pillCount < 18) {
+        hud.strokeStyle = 'rgba(130, 188, 255, 0.55)'; hud.lineWidth = 1;
+        hud.beginPath(); hud.arc(sp.x, sp.y, 5.5, 0, Math.PI * 2); hud.stroke();
+        hud.fillStyle = '#A8D0FF'; hud.beginPath(); hud.arc(sp.x, sp.y, 1.8, 0, Math.PI * 2); hud.fill();
+      } else if (!hasSearch) {
+        hud.strokeStyle = isHov ? 'rgba(200,230,255,0.88)' : 'rgba(160,196,238,0.34)';
+        hud.lineWidth = 1;
+        hud.beginPath(); hud.arc(sp.x, sp.y, isHov ? 8 : 4.5, 0, Math.PI * 2); hud.stroke();
+      }
+    });
+
+    requestAnimationFrame(render);
+  }
+
+  function resize() {
+    W = Math.max(320, window.innerWidth || document.documentElement.clientWidth || 1280);
+    H = Math.max(240, window.innerHeight || document.documentElement.clientHeight || 720);
+    glCanvas.width = Math.round(W * DPR); glCanvas.height = Math.round(H * DPR);
+    hudCanvas.width = Math.round(W * DPR); hudCanvas.height = Math.round(H * DPR);
+    hud.setTransform(DPR, 0, 0, DPR, 0, 0);
+    rebuildFBOs();
+  }
+
+  // ===== INTERACTION =====
+  let lx = 0, ly = 0, moved = 0;
+  hudCanvas.addEventListener('mousedown', e => { dragging = true; lx = e.clientX; ly = e.clientY; moved = 0; hudCanvas.classList.add('dragging'); });
+  window.addEventListener('mouseup', () => { dragging = false; hudCanvas.classList.remove('dragging'); });
+  window.addEventListener('mousemove', e => {
+    if (dragging) {
+      const dx = e.clientX - lx, dy = e.clientY - ly; moved += Math.hypot(dx, dy);
+      cam.tyaw -= dx * 0.006; cam.tpitch = Math.max(-0.35, Math.min(1.25, cam.tpitch + dy * 0.005));
+      lx = e.clientX; ly = e.clientY;
+    } else if (lastMVP) {
+      const t = performance.now() * 0.001;
+      let best = null, bd = 16 * 16;
+      for (let i = 0; i < ANCHORS.length; i++) {
+        const a = ANCHORS[i];
+        if (focusPool >= 0 && a.pool !== focusPool) continue;
+        if (searchQuery && !matchedIds.has(a.id) && !neighborIds.has(a.id)) continue;
+        const sp = projPt(a.p, lastMVP, t); if (!sp) continue;
+        const d = (sp.x - e.clientX) ** 2 + (sp.y - e.clientY) ** 2;
+        if (d < bd) { bd = d; best = a; }
+      }
+      hovAnchor = best;
+      if (best) {
+        hudCanvas.style.cursor = 'pointer';
+        tip.style.display = 'block';
+        tip.style.left = Math.min(W - 260, e.clientX + 16) + 'px';
+        tip.style.top = (e.clientY - 12) + 'px';
+        tip.innerHTML = `<strong>${escapeHtml(best.title)}</strong> <span style="color:#8EA4C2">│ ${escapeHtml(best.badge)}</span>`;
+      } else {
+        hudCanvas.style.cursor = 'grab';
+        tip.style.display = 'none';
+      }
+    }
+  });
+  hudCanvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    cam.tdist = Math.max(1.25, Math.min(5.5, cam.tdist * (e.deltaY > 0 ? 1.09 : 0.92)));
+  }, { passive: false });
+  hudCanvas.addEventListener('click', () => { if (moved < 6 && hovAnchor) { selectAnchor(hovAnchor); burst = 0.8; syncMatchBuffers(); } });
+
+  function applyCamPreset(key) {
+    const p = CAM_PRESETS[key]; if (!p) return;
+    autoFly = false; document.getElementById('btnFly').textContent = '自动穿环';
+    cam.tyaw = p.yaw; cam.tpitch = p.pitch; cam.tdist = p.dist; cam.troll = p.roll;
+    cam.ttx = p.tx; cam.tty = p.ty; cam.ttz = p.tz;
+    document.querySelectorAll('#camPills .cam-btn').forEach(b => b.classList.toggle('active', b.dataset.cam === key));
+  }
+  document.querySelectorAll('#camPills .cam-btn').forEach(b => b.addEventListener('click', () => applyCamPreset(b.dataset.cam)));
+  if (urlCam && CAM_PRESETS[urlCam]) applyCamPreset(urlCam);
+
+  document.getElementById('btnOrbit').addEventListener('click', function(){ autoOrbit = !autoOrbit; this.textContent = '巡航：' + (autoOrbit ? '开' : '关'); });
+  document.getElementById('btnFly').addEventListener('click', function(){ autoFly = !autoFly; this.textContent = autoFly ? '停止穿环' : '自动穿环'; });
+  document.getElementById('rcClose').addEventListener('click', () => document.getElementById('rightCard').classList.add('hidden'));
+  document.getElementById('btnToggleCard').addEventListener('click', () => document.getElementById('rightCard').classList.toggle('hidden'));
+
+  let feedI = 0;
+  document.getElementById('btnRecall').addEventListener('click', () => {
+    burst = 1.0;
+    const fIds = [...FEATURED_IDS];
+    feedI = (feedI + 1) % Math.max(1, fIds.length);
+    const a = ANCHORS[fIds[feedI]] || ANCHORS[0];
+    selectAnchor(a);
+    syncMatchBuffers();
+    document.getElementById('liveFeed').textContent = `[真实脉冲] ${a.title} · ${a.badge} · 1:1 全库 ${N_MEM} 条流共振中`;
+  });
+
+  // ===== LIVE 3D SEARCH & CAMERA FLY-TO LINKAGE ACROSS ALL N_MEM MEMORIES =====
+  const searchInp = document.getElementById('searchInp');
+  const searchClr = document.getElementById('searchClr');
+  const searchRes = document.getElementById('searchRes');
+
+  function flyToAnchor(a) {
+    selectAnchor(a);
+    syncMatchBuffers();
+    const t = performance.now() * 0.001, rot = t * 0.018;
+    const wx = a.p[0] * Math.cos(rot) - a.p[2] * Math.sin(rot);
+    const wy = a.p[1];
+    const wz = a.p[0] * Math.sin(rot) + a.p[2] * Math.cos(rot);
+    autoOrbit = false; document.getElementById('btnOrbit').textContent = '巡航：关';
+    cam.ttx = wx * 0.75; cam.tty = wy * 0.75; cam.ttz = wz * 0.75;
+    cam.tdist = 2.15; cam.tpitch = 0.44;
+    burst = 0.9;
+    document.getElementById('liveFeed').textContent = `[1:1 定位] 命中「${a.title}」(${matchedIds.size}条) · 等比例点亮 ${matchedIds.size} 条数据流`;
+  }
+
+  function runSearch(raw) {
+    searchQuery = raw.trim().toLowerCase();
+    searchClr.classList.toggle('show', searchQuery.length > 0);
+    matchedIds.clear(); neighborIds.clear();
+
+    if (!searchQuery) {
+      searchActiveFlag = 0.0;
+      searchRes.classList.remove('show');
+      targetDim = 1.0;
+      autoOrbit = true; document.getElementById('btnOrbit').textContent = '巡航：开';
+      const p = CAM_PRESETS.wide;
+      cam.ttx = p.tx; cam.tty = p.ty; cam.ttz = p.tz; cam.tdist = p.dist; cam.tpitch = p.pitch;
+      syncMatchBuffers();
+      updateFlowMetric();
+      document.getElementById('liveFeed').textContent = `[当前快照] ${N_MEM.toLocaleString()} 条记忆 = ${N_MEM.toLocaleString()} 条实时星轨脉冲流 · 只读 (${SNAP.generated_at})`;
+      return;
+    }
+
+    searchActiveFlag = 1.0;
+    const terms = searchQuery.split(/\s+/).filter(Boolean);
+    const hits = ANCHORS.map(a => {
+      let score = 0;
+      terms.forEach(tk => {
+        if (a.title.toLowerCase().includes(tk)) score += 3;
+        else if (a.en.some(e => e.toLowerCase().includes(tk))) score += 2.4;
+        else if (a.kw.includes(tk)) score += 1.2;
+      });
+      return { a, score };
+    }).filter(x => x.score > 0).sort((x, y) => y.score - x.score || y.a.s - x.a.s);
+
+    hits.forEach(({ a }) => {
+      matchedIds.add(a.id);
+      (a.links || []).forEach(lid => neighborIds.add(lid));
+    });
+    targetDim = hits.length > 0 ? 0.30 : 0.20;
+    updateFlowMetric();
+
+    searchRes.classList.add('show');
+    if (hits.length === 0) {
+      syncMatchBuffers();
+      searchRes.innerHTML = `<div class="sr-empty">未命中「${escapeHtml(raw)}」</div>`;
+      return;
+    }
+
+    const headNote = `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#8AC2FF;padding:2px 5px">命中 ${hits.length} / ${N_MEM} 条 · 已点亮 ${hits.length} 条流</div>`;
+    searchRes.innerHTML = headNote + hits.slice(0, 28).map(({ a }, idx) =>
+      `<div class="sr-item ${idx === 0 ? 'active' : ''}" data-aid="${a.id}">
+        <span class="sr-t">${escapeHtml(a.title)}</span>
+        <span class="sr-m">${a.s.toFixed(0)} · F${a.f.toFixed(0)}</span>
+      </div>`
+    ).join('');
+    searchRes.querySelectorAll('.sr-item').forEach(el => {
+      el.addEventListener('click', () => {
+        searchRes.querySelectorAll('.sr-item').forEach(x => x.classList.remove('active'));
+        el.classList.add('active');
+        const found = ANCHORS[Number(el.dataset.aid)];
+        if (found) flyToAnchor(found);
+      });
+    });
+
+    flyToAnchor(hits[0].a);
+  }
+
+  searchInp.addEventListener('input', e => runSearch(e.target.value));
+  searchClr.addEventListener('click', () => { searchInp.value = ''; runSearch(''); searchInp.focus(); });
+  window.addEventListener('keydown', e => { if (e.key === 'Escape' && searchQuery) { searchInp.value = ''; runSearch(''); } });
+
+  initWebGL();
+  populateRealHUD();
+  syncMatchBuffers();
+  if (selAnchor) selectAnchor(selAnchor);
+  document.getElementById('liveFeed').textContent = `[当前快照] ${N_MEM.toLocaleString()} 条记忆 = ${N_MEM.toLocaleString()} 条实时星轨脉冲流 · 只读 (${SNAP.generated_at})`;
+
+  const urlQ = new URLSearchParams(location.search).get('q');
+  if (urlQ) { searchInp.value = urlQ; setTimeout(() => runSearch(urlQ), 80); }
+
+  function applyMergedScene(merged, nextSnap, addedCount) {
+    SNAP = nextSnap;
+    scene = { items: merged.items, added: [] };
+    if (parent.m1Connection === connection) parent.m1Scene = { connection, state: scene };
+    RAW_ITEMS = scene.items;
+    N_MEM = RAW_ITEMS.length;
+    buildGeometry();
+    populateRealHUD();
+    if (searchQuery) {
+      runSearch(searchInp.value);
+    } else {
+      syncMatchBuffers();
+      if (selAnchor) selectAnchor(selAnchor);
+      updateFlowMetric();
+      document.getElementById('liveFeed').textContent = addedCount > 0
+        ? `[增量落位] 新增 ${addedCount} 条记忆已融入星环 · 全库 ${N_MEM.toLocaleString()} 条（原星锚定未偏移）`
+        : `[当前快照] ${N_MEM.toLocaleString()} 条记忆 = ${N_MEM.toLocaleString()} 条实时星轨脉冲流 · 只读 (${SNAP.generated_at})`;
+    }
+    if (addedCount > 0) burst = Math.max(burst, 0.45);
+  }
+
+  function drawWebGLArrivals(mvp, t, searchActiveFlag) {
+    if (!arrivals || !gl || !progArrFlow) return;
+    const now = performance.now() * 0.001;
+    const { items, merged, snapshot, start, duration, step, end } = arrivals;
+    const lineVerts = [];
+    const starVerts = [];
+    const starMatch = [];
+    const SEGS = 12;
+    const TAIL_LEN = 0.32;
+
+    items.forEach((star, idx) => {
+      const elapsed = now - (start + idx * step);
+      if (elapsed < 0) return;
+      const p = Math.min(1, elapsed / duration);
+      const lane = ((idx % 7) - 3) * 0.055;
+      const vp = visPoolOf(star);
+      const col = POOL_COLS[vp] || POOL_COLS[0];
+      const poolHit = (focusPool < -0.5) ? 1.0 : (Math.abs(vp - focusPool) < 0.3 ? 1.35 : 0.08);
+      const fadeEnv = Math.max(0.28, Math.sin(Math.min(0.995, p) * Math.PI)) * poolHit * 1.28;
+
+      const tailStart = Math.max(0, p - TAIL_LEN);
+      let prevPt = M1Live.arrivalPoint(star.pos, tailStart, t, lane);
+      let prevE = 0.0;
+      for (let s = 1; s <= SEGS; s++) {
+        const u = s / SEGS;
+        const currPt = M1Live.arrivalPoint(star.pos, tailStart + (p - tailStart) * u, t, lane);
+        lineVerts.push(
+          prevPt[0], prevPt[1], prevPt[2], col[0], col[1], col[2], prevE, fadeEnv,
+          currPt[0], currPt[1], currPt[2], col[0], col[1], col[2], u, fadeEnv
+        );
+        prevPt = currPt;
+        prevE = u;
+      }
+
+      if (p > 0.62 && star.lk && star.lk.length > 0) {
+        const tgt = merged.items[star.lk[0][0]];
+        if (tgt && tgt.pos) {
+          const tether = ((p - 0.62) / 0.38) * 0.32 * poolHit;
+          lineVerts.push(
+            prevPt[0], prevPt[1], prevPt[2], col[0], col[1], col[2], 0.52, tether,
+            tgt.pos[0], tgt.pos[1], tgt.pos[2], col[0], col[1], col[2], 0.72, tether
+          );
+        }
+      }
+
+      const sz = 2.0 + ((star.s || 50) / 100) * 2.1 + 0.6;
+      starVerts.push(prevPt[0], prevPt[1], prevPt[2], col[0], col[1], col[2], sz, 0.88, vp);
+      starMatch.push(1.0);
+    });
+
+    if (lineVerts.length > 0) {
+      gl.useProgram(progArrFlow);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufArrLines);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lineVerts), gl.DYNAMIC_DRAW);
+      bindA(progArrFlow, 'aPos', 3, 32, 0);
+      bindA(progArrFlow, 'aCol', 3, 32, 12);
+      bindA(progArrFlow, 'aEnd', 1, 32, 24);
+      bindA(progArrFlow, 'aFade', 1, 32, 28);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progArrFlow, 'uMVP'), false, mvp);
+      gl.uniform1f(gl.getUniformLocation(progArrFlow, 'uTime'), t);
+      gl.drawArrays(gl.LINES, 0, lineVerts.length / 8);
+    }
+
+    if (starVerts.length > 0) {
+      gl.useProgram(progStar);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufArrStars);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(starVerts), gl.DYNAMIC_DRAW);
+      bindA(progStar, 'aPos', 3, 36, 0);
+      bindA(progStar, 'aCol', 3, 36, 12);
+      bindA(progStar, 'aSize', 1, 36, 24);
+      bindA(progStar, 'aSeed', 1, 36, 28);
+      bindA(progStar, 'aPool', 1, 36, 32);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bufArrStarMatch);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(starMatch), gl.DYNAMIC_DRAW);
+      bindA(progStar, 'aMatch', 1, 4, 0);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progStar, 'uMVP'), false, mvp);
+      gl.uniform1f(gl.getUniformLocation(progStar, 'uTime'), t);
+      gl.uniform1f(gl.getUniformLocation(progStar, 'uDpr'), DPR);
+      gl.uniform1f(gl.getUniformLocation(progStar, 'uFocusPool'), focusPool);
+      gl.uniform1f(gl.getUniformLocation(progStar, 'uBurst'), Math.max(burst, 0.25));
+      gl.uniform1f(gl.getUniformLocation(progStar, 'uDim'), searchDim);
+      gl.uniform1f(gl.getUniformLocation(progStar, 'uSearchActive'), searchActiveFlag);
+      gl.drawArrays(gl.POINTS, 0, starVerts.length / 9);
+    }
+
+    if (now >= end) {
+      const done = arrivals;
+      arrivals = null;
+      applyMergedScene(done.merged, done.snapshot, done.items.length);
+    }
+  }
+
+  window.updateM1Snapshot = function(nextSnap) {
+    if (!nextSnap || !Array.isArray(nextSnap.items)) return;
+    if (arrivals) {
+      const prev = arrivals;
+      arrivals = null;
+      applyMergedScene(prev.merged, prev.snapshot, prev.items.length);
+    }
+    const merged = M1Live.merge(scene, nextSnap);
+    if (!merged.added.length) {
+      applyMergedScene(merged, nextSnap, 0);
+      return;
+    }
+    const now = performance.now() * 0.001;
+    const duration = 1.65;
+    const step = Math.min(0.08, 0.9 / Math.max(1, merged.added.length - 1));
+    arrivals = {
+      items: merged.added,
+      merged,
+      snapshot: nextSnap,
+      start: now,
+      duration,
+      step,
+      end: now + duration + step * (merged.added.length - 1)
+    };
+    document.getElementById('liveFeed').textContent = `[新光点接入] 正在从环口接入 ${merged.added.length} 条新记忆（原有 ${N_MEM.toLocaleString()} 颗老星保持不动）…`;
+  };
+
+  resize();
+  window.captureView = () => ({ cam: { ...cam }, query: searchInp.value, autoOrbit, autoFly, focusPool,
+    showCard: !document.getElementById('rightCard').classList.contains('hidden') });
+  const restored = parent.restoredView;
+  if (restored?.mod === 'm1') {
+    if (restored.query) { searchInp.value = restored.query; runSearch(restored.query); }
+    Object.assign(cam, restored.cam);
+    ({ autoOrbit, autoFly, focusPool } = restored);
+    document.getElementById('btnOrbit').textContent = '巡航：' + (autoOrbit ? '开' : '关');
+    document.getElementById('btnFly').textContent = autoFly ? '停止穿环' : '自动穿环';
+    document.getElementById('rightCard').classList.toggle('hidden', !restored.showCard);
+    document.querySelectorAll('#poolChips .chip').forEach(b => b.classList.toggle('active', Number(b.dataset.p) === focusPool));
+    updateFlowMetric();
+  }
+  window.addEventListener('resize', resize);
+  requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>

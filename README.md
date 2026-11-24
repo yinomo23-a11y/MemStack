@@ -246,6 +246,20 @@ broken".
 
 ---
 
+## Desktop App (`desktop/`)
+
+A Windows desktop visualizer for MemStack and custom memory stores lives in [`desktop/`](desktop/README.md).
+It connects directly to a local MemStack directory, any SQLite database, any JSONL/NDJSON file, or any HTTP endpoint implementing Protocol v1 (see `desktop/adapter_example.py` and `desktop/memstack_adapter.py`), plus a built-in synthetic demo mode.
+
+```powershell
+cd desktop
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+.\.venv\Scripts\python.exe app.py
+```
+
+---
+
 ## Requirements
 
 - Tested with Python 3.12

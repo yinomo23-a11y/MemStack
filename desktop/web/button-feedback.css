@@ -1,0 +1,2 @@
+button:enabled:active { filter: brightness(1.25); }
+button[aria-busy="true"] { cursor: progress; opacity: 0.75; }

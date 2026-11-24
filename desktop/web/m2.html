@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MEMORY MATRIX · 模块 02 电影级高密流转与沉淀矩阵</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #06080A; color: #DCE6F4;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 11px; user-select: none;
+  }
+  .app { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
+
+  /* Ultra-crisp top strip engineering HUD */
+  .top {
+    height: 44px; flex-shrink: 0;
+    background: #070A0E; border-bottom: 1px solid rgba(148, 174, 210, 0.12);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 18px; gap: 14px;
+  }
+  .top-l { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+  .nm-tag {
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 11.5px;
+    font-weight: 700; letter-spacing: 2px; color: #E8F1FC; white-space: nowrap;
+  }
+  .nm-sub {
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 10px;
+    color: #7487A2; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .search-box { position: relative; width: clamp(160px, 18vw, 280px); flex-shrink: 0; }
+  .search-inp {
+    width: 100%; background: #0B0F16; border: 1px solid rgba(148,174,210,0.22);
+    border-radius: 5px; color: #EDF4FF; font-size: 11px; padding: 5px 26px 5px 9px;
+    outline: none; font-family: inherit;
+  }
+  .search-inp:focus { border-color: rgba(118,180,255,0.65); }
+  .search-inp::placeholder { color: #5D6F88; }
+  .search-clr {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: #7C90AB; cursor: pointer; font-size: 13px; display: none;
+  }
+  .search-clr.show { display: block; }
+
+  .top-r { display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-family: "JetBrains Mono", Consolas, monospace; font-size: 10px; }
+  .btn {
+    background: #0E141E; border: 1px solid rgba(148,174,210,0.22); color: #CBE0F8;
+    font-size: 10.5px; padding: 4.5px 10px; border-radius: 5px; cursor: pointer; font-family: inherit;
+    transition: all .13s; white-space: nowrap;
+  }
+  .btn:hover { background: #162235; border-color: rgba(118,180,255,0.58); color: #FFF; }
+  .btn.pri { background: rgba(94,154,235,0.16); border-color: rgba(118,180,255,0.48); color: #9FC9FF; font-weight: 600; }
+  .ro { color: #5FD1AF; padding: 3px 8px; border-radius: 4px; background: rgba(78,196,168,0.09); border: 1px solid rgba(78,196,168,0.28); white-space: nowrap; }
+
+  /* Full-Bleed Matrix Canvas Stage */
+  .stage { flex: 1; position: relative; overflow: hidden; background: #06080A; }
+  canvas#matrixCv { width: 100%; height: 100%; display: block; cursor: crosshair; }
+
+  /* Floating non-obstructive readout pill on hover/search */
+  .hover-pill {
+    position: absolute; pointer-events: none; z-index: 12; display: none;
+    background: rgba(8, 12, 19, 0.94); border: 1px solid rgba(118, 180, 255, 0.48);
+    border-radius: 7px; padding: 8px 11px; max-width: 280px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+  }
+  .hp-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 4px; }
+  .hp-name { font-family: "JetBrains Mono", Consolas, monospace; font-weight: 700; font-size: 11px; color: #F0F6FF; }
+  .hp-tag { font-family: "JetBrains Mono", Consolas, monospace; font-size: 9.5px; color: #8AC2FF; }
+  .hp-desc { font-size: 10.5px; color: #9FB1C8; line-height: 1.45; margin-bottom: 5px; }
+  .hp-meta { font-family: "JetBrains Mono", Consolas, monospace; font-size: 9.5px; color: #6E829E; display: flex; justify-content: space-between; }
+
+  /* Full-Width 4-Panel Bottom Telemetry Dock */
+  .dock {
+    height: 128px; flex-shrink: 0;
+    background: #07090D; border-top: 1px solid rgba(148,174,210,0.14);
+    display: grid; grid-template-columns: 1.12fr 1.12fr 1.18fr 0.92fr;
+    gap: 8px; padding: 8px 14px;
+  }
+  .d-card {
+    background: #0A0D13; border: 1px solid rgba(148,174,210,0.13); border-radius: 5px;
+    padding: 7px 10px; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .d-head {
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 9px;
+    color: #6E8099; letter-spacing: 0.5px; margin-bottom: 5px; white-space: nowrap;
+    padding-bottom: 3px; border-bottom: 1px solid rgba(148,174,210,0.08);
+  }
+  .d-head span { overflow: hidden; text-overflow: ellipsis; }
+  .d-head span:last-child { color: #8AA2C0; }
+
+  /* Panel 1: Run Log */
+  .log-lines {
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 9.2px;
+    line-height: 1.45; color: #9CB0C9; overflow: hidden;
+  }
+  .log-lines .tm { color: #506078; margin-right: 6px; }
+  .log-lines .nd { color: #D8E6F8; display: inline-block; width: 88px; }
+  .log-lines .ok { color: #5DC9A3; }
+  .log-lines .ms { color: #7C92B0; float: right; }
+
+  /* Panel 2: Dispatch 10-Worker Sedimentation Bars */
+  .disp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3.5px 12px; margin-top: 1px; }
+  .dp-row { display: flex; align-items: center; gap: 6px; font-family: "JetBrains Mono", Consolas, monospace; font-size: 9px; color: #8FA3BE; }
+  .dp-lbl { width: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dp-bar { flex: 1; height: 4px; background: #141B27; border-radius: 2px; overflow: hidden; }
+  .dp-fill { height: 100%; border-radius: 2px; transition: width .25s ease; }
+  .dp-val { width: 22px; text-align: right; color: #C5D5E8; }
+
+  /* Panel 3: State Transition Live Code */
+  .code-box {
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 9.3px;
+    line-height: 1.46; color: #9BB0CC; white-space: pre; overflow: hidden;
+  }
+  .kw { color: #8E89E6; } .fn { color: #7CB6FA; } .st { color: #67CCA8; } .nm { color: #DFAD68; } .cm { color: #53647D; }
+
+  /* Panel 4: Graph Telemetry Big Counters + Sparkline */
+  .gt-meta { font-family: "JetBrains Mono", Consolas, monospace; font-size: 8.8px; color: #6F829D; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gt-nums { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 5px; }
+  .gt-k { font-family: "JetBrains Mono", Consolas, monospace; font-size: 8.5px; color: #62748E; white-space: nowrap; }
+  .gt-v { font-family: "JetBrains Mono", Consolas, monospace; font-size: clamp(14px, 1.15vw, 20px); font-weight: 700; color: #EDF4FF; letter-spacing: 0.5px; line-height: 1.1; white-space: nowrap; }
+  .gt-v.blue { color: #85BDFF; }
+  canvas#sparkCv { width: 100%; height: 24px; display: block; }
+</style>
+<link rel="stylesheet" href="button-feedback.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="top-l">
+      <span class="nm-tag">N / M &nbsp; MEMORY MATRIX</span>
+      <span class="nm-sub" id="nmSub">02 / CONSOLIDATION &amp; 1:1 REAL DATA FLOW ENGINE</span>
+      <div class="search-box">
+        <input class="search-inp" id="qInp" placeholder="搜索记忆、实体或标签…" aria-label="搜索记忆、实体或标签" autocomplete="off" />
+        <button class="search-clr" id="qClr">×</button>
+      </div>
+    </div>
+    <div class="top-r">
+      <span class="ro">只读</span>
+      <button class="btn pri" id="btnSurge">⚡ 注入实时巩固波</button>
+      <button class="btn" id="btnPause">流转：开</button>
+    </div>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="matrixCv"></canvas>
+    <div class="hover-pill" id="hPill">
+      <div class="hp-head"><span class="hp-name" id="hpName"></span><span class="hp-tag" id="hpTag"></span></div>
+      <div class="hp-desc" id="hpDesc"></div>
+      <div class="hp-meta"><span id="hpSrc"></span><span id="hpFlow"></span></div>
+    </div>
+  </div>
+
+  <footer class="dock">
+    <div class="d-card">
+      <div class="d-head"><span>RUN LOG</span><span>EVENT STREAM</span></div>
+      <div class="log-lines" id="runLog"></div>
+    </div>
+    <div class="d-card">
+      <div class="d-head"><span>DISPATCH</span><span>10 MEMORY WORKERS</span></div>
+      <div class="disp-grid" id="dispGrid"></div>
+    </div>
+    <div class="d-card">
+      <div class="d-head"><span>STATE TRANSITION</span><span>REAL DECAY &amp; ROUTER</span></div>
+      <div class="code-box"><span class="kw">def</span> <span class="fn">route_memory</span>(m, now):
+  floor = <span class="fn">real_floor</span>(m) <span class="cm"># max(lvl, imp*60, 45, 55)</span>
+  <span class="kw">if</span> m.score >= <span class="nm">60</span>: <span class="kw">return</span> <span class="fn">promote_active</span>(m, floor)
+  <span class="kw">if</span> m.age_d > <span class="nm">180</span> <span class="kw">and</span> m.str &lt; <span class="nm">20</span>: <span class="fn">archive_cold</span>(m)
+  <span class="kw">return</span> <span class="fn">hybrid_rerank</span>(<span class="nm">0.80</span>*sim + <span class="nm">0.15</span>*str + <span class="nm">0.05</span>*emo)</div>
+    </div>
+    <div class="d-card">
+      <div class="d-head"><span>GRAPH TELEMETRY</span><span id="gtStatus">1:1 LIVE</span></div>
+      <div class="gt-meta" id="gtMeta">加载真实记忆流中...</div>
+      <div class="gt-nums">
+        <div><div class="gt-k">REAL MEMORIES</div><div class="gt-v" id="cntCommit">00000</div></div>
+        <div style="text-align:right"><div class="gt-k">1:1 ACTIVE FLOWS</div><div class="gt-v blue" id="cntFlight">0 / 0</div></div>
+      </div>
+      <canvas id="sparkCv"></canvas>
+    </div>
+  </footer>
+</div>
+
+<script src="gemini-data.js"></script>
+<script>
+(function(){
+  const cv = document.getElementById('matrixCv');
+  const ctx = cv.getContext('2d');
+  const stage = document.getElementById('stage');
+  const hPill = document.getElementById('hPill');
+  const sparkCv = document.getElementById('sparkCv');
+  const sctx = sparkCv.getContext('2d');
+  const DPR = Math.min(2, window.devicePixelRatio || 1);
+
+  let W = 0, H = 0, paused = false, surge = 0;
+  let hovNode = null, searchQuery = '', matchedModSet = new Set(), matchedFlowSet = new Set();
+
+  const SNAP = window.MEMORY_SNAPSHOT;
+  if (!SNAP || !Array.isArray(SNAP.items) || SNAP.items.length === 0) {
+    document.getElementById('gtMeta').textContent = '暂无可显示的记忆。';
+    return;
+  }
+  const RAW_ITEMS = SNAP.items;
+  const N_MEM = RAW_ITEMS.length;
+  document.getElementById('qInp').placeholder = `搜全部 ${N_MEM.toLocaleString()} 条记忆或泳道`;
+  document.getElementById('cntCommit').textContent = String(N_MEM).padStart(5, '0');
+  document.getElementById('gtMeta').textContent = `40 MODULES / ${N_MEM.toLocaleString()} 1:1 FLOWS / ${SNAP.edge_counts.total.toLocaleString()} EDGES`;
+  document.getElementById('cntFlight').textContent = `${N_MEM} / ${N_MEM}`;
+
+  // Offscreen cache for N_MEM 1:1 silk-cone micro-filaments (0.1ms blit at 60fps!)
+  const mistCv = document.createElement('canvas');
+  const mctx = mistCv.getContext('2d');
+
+  function mkRand(seed) { let s = seed; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+
+  const POOL_NAMES = ['活跃', '短期', '亲密', '冷存', '工作'];
+  const RT = SNAP.runtime || {};
+  const FLAGS = RT.flags || {};
+  const gateTriageOn = Boolean(FLAGS.gate_triage);
+  const consTime = RT.consolidate_time || '未提供';
+  const lastConsAt = RT.last_consolidate_at ? `（上次 ${RT.last_consolidate_at.slice(5, 16)}）` : '';
+
+  // ===== 40 REAL ARCHITECTURE MODULES ACROSS 4 COLUMNS =====
+  const COLS = [
+    { title: 'INPUT / PERCEPTION · 短期与输入', items: [
+      { id:'001', name:'sensory_dialogue',  c:'#58C790', v1:'-', v2:'对话流', m:'window_ledger',    kw:'对话 滑窗 输入 window', desc:'DSH 对话原始滑窗输入（保留 30 天 / 500 轮），window_ledger = True 已启用。' },
+      { id:'002', name:'working_mem_ctx',   c:'#58C790', v1:'-', v2:'TTL24h', m:'working_mem.json', kw:'工作记忆 会话 TTL 24h', desc:'会话隔离工作台，单块≤500 tok、总上限 50k tok、TTL 24h。' },
+      { id:'003', name:'shortterm_fresh',   c:'#52B8CC', v1:'-', v2:'+0.15',  m:'owner_shortterm',  kw:'短期 3天窗 新鲜 24h', desc:'短期 3 天窗 24h 新鲜段，检索享 SHORT_TERM_FRESH_BONUS = +0.15。' },
+      { id:'004', name:'shortterm_decay',   c:'#D2C662', v1:'-', v2:'<30清',  m:'decay_logic.py',   kw:'短期 衰减 30 阈值 平方 遗忘', desc:'按 100·(1-(t/3)²) 平方加速衰减，跌破 30.0 自动淘汰清理。' },
+      { id:'005', name:'tool_card_promote', c:'#58C790', v1:'-', v2:'proc',   m:'config.py',        kw:'工具卡 提权 绘图参数 参数 代码 脚本', desc:'TOOL_CARD_PROMOTE 自动捕获可复用工具/代码参数卡优先巩固。' },
+      { id:'006', name:'schedule_parser',   c:'#58C790', v1:'-', v2:'+0.08',  m:'owner_active',     kw:'课表 体育课 生效 窗口 解耦', desc:'抽取 effective_from/to 课表生效区间，与衰减强度完全解耦。' },
+      { id:'007', name:'emotion_capture',   c:'#52B8CC', v1:'-', v2:'冻结',   m:'decay_logic.py',   kw:'情绪 三轨 印象 余温 安抚 强度', desc:'冻结记录原始 event_intensity 与 emotion_intensity，驱动三轨保护。' },
+      { id:'008', name:'entity_extractor',  c:'#58C790', v1:'-', v2:SNAP.entities.length+'簇', m:'entity_graph.py', kw:'实体 标签 记忆', desc:`当前来源有 ${SNAP.entities.length} 个实体簇。` },
+      { id:'009', name:'candidate_pool',    c:'#58C790', v1:'-', v2:gateTriageOn?'拦截开':'只记不拦', m:RT.candidates_lines == null ? '未提供' : RT.candidates_lines+'行草稿', kw:'候选池 观测 噪声 标记 gate_triage', desc:`candidate_pool=True（已启用，记录 ${RT.candidates_lines ?? '未提供'} 行草稿本）；gate_triage=${gateTriageOn?'True':'False'}（仅记 mark 标记不硬拦写入，防误删）。` },
+      { id:'010', name:'bge_m3_embedder',   c:'#52B8CC', v1:'-', v2:'1024d',  m:'embeddings.sqlite',kw:'bge-m3 向量 1024 语义 Ollama', desc:'本地 Ollama bge-m3 1024 维向量编码器，向量绝不下发前端。' }
+    ]},
+    { title: 'DECISION / GATE & FLOOR · 三层分级与地板', items: [
+      { id:'011', name:'triage_L1_min',     c:'#CC7AB6', v1:'-', v2:'L1≥20',  m:'daily_consolidate',kw:'三层 沉淀 分级 20 L1 巩固', desc:'每日 23:25 巩固第一档阈值 TRIAGE_L1_MIN = 20（20–39 归 L1 边缘档，已启用）。' },
+      { id:'012', name:'triage_L2_min',     c:'#CC7AB6', v1:'-', v2:'L2≥40',  m:'daily_consolidate',kw:'三层 沉淀 分级 40 L2 巩固', desc:'每日 23:25 巩固第二档阈值 TRIAGE_L2_MIN = 40（40–59 归 L2 中层，已启用；活跃池现有大量 L2 记忆）。' },
+      { id:'013', name:'consolidate_60',    c:'#54BAC8', v1:'-', v2:consTime, m:'L3≥60巩固',        kw:`巩固 ${consTime} 阈值 60 L3 核心`, desc:`Windows 计划任务每日 ${consTime} 自动巩固（CONSOLIDATION_SCORE_THRESHOLD = 60 → L3 核心）${lastConsAt}。` },
+      { id:'014', name:'vector_dedupe',     c:'#CFC666', v1:'-', v2:'已启·合并', m:'detect_duplicates',kw:'去重 合并 向量 冗余 召回', desc:'dedup_containment = True 已启动；基于 bge-m3 与包含度合并同义记忆并累加提及/命中。' },
+      { id:'015', name:'floor_importance',  c:'#CC7AB6', v1:'-', v2:'层1',    m:'real_floor()',     kw:'地板 importance 保护 衰减', desc:'五层真实地板第 1 层：按重要度自动算出基础保底高度。' },
+      { id:'016', name:'floor_core_person', c:'#CC7AB6', v1:'-', v2:'F45+',   m:'CORE_FLOOR',       kw:'地板 45 核心人物', desc:'模型可为核心人物相关记忆设定衰减地板。' },
+      { id:'017', name:'floor_episode',     c:'#CC7AB6', v1:'-', v2:'F45',    m:'EPISODE_FLOOR',    kw:'地板 45 情景档 聚合 衰减', desc:'多轮对话聚合的情景档案享 45.0 地板与 0.8 超慢衰减。' },
+      { id:'018', name:'floor_intimate',    c:'#CC7AB6', v1:'-', v2:'F70/55', m:'owner_intimate',   kw:'地板 70 55 亲密 安抚 最高', desc:'亲密专池真实地板（70.0 / 默认 55.0），且 INTIMATE_IGNORES_EMOTION = True。' },
+      { id:'019', name:'emo_decay_shield',  c:'#CC7AB6', v1:'-', v2:'×0.25',  m:'EMOTION_PROTECT',  kw:'情绪 保护 衰减 减缓 护盾', desc:'高情绪衰减保护已生效（≥85→×0.25、≥60→×0.40、≥40→×0.70）。' },
+      { id:'020', name:'cold_archive_rule', c:'#CC7AB6', v1:'-', v2:'冻结',   m:'COLD_ARCHIVE',     kw:'冷存 180天 归档 冻结 20', desc:'同时满足超过 180 天且强度 <20 时原子迁移至 owner_cold.json 并冻结。' }
+    ]},
+    { title: 'EXECUTION / LONG-TERM POOLS · 长期与冷存', items: [
+      { id:'021', name:'active_L0_tier',    c:'#8A78D8', v1:'-', v2:'×1.0',   m:'owner_active',     kw:'长期 活跃 L0 7天', desc:'长期活跃 L0（0–7天），重排时效系数 ×1.0 满权重。' },
+      { id:'022', name:'active_L1_tier',    c:'#CE8D49', v1:'-', v2:'×0.8',   m:'owner_active',     kw:'长期 活跃 L1 30天 降权', desc:'长期活跃 L1（7–30天），时效权重平滑降权至 ×0.8。' },
+      { id:'023', name:'active_L2_tier',    c:'#CE8D49', v1:'-', v2:`待>${30}d`, m:'owner_active',   kw:'长期 活跃 L2 180天 空池', desc:`规则已启用（30–180天 ×0.5）；当前 L2 有 ${SNAP.active_tiers.L2} 条。最老活跃记忆未活跃 ${RT.oldest_inactive_d ?? '—'} 天。` },
+      { id:'024', name:'episode_archive',   c:'#CE8D49', v1:'-', v2:'600s',   m:'episode.py',       kw:'情景 聚合 档案 故事 因果', desc:`episode=True 已启动（按 600s 会话断点聚合，活跃池现存情景档 ${SNAP.active_tiers.episode} 条）。` },
+      { id:'025', name:'intimate_vault',    c:'#CE8D49', v1:'-', v2:'F70',    m:'owner_intimate',   kw:'亲密 专池 安抚 晚安', desc:`${SNAP.pools.intimate} 条专属亲密记忆独立脱敏存储于 owner_intimate.json。` },
+      { id:'026', name:'cold_storage_pool', c:'#6C82A0', v1:'-', v2:'冻结',   m:'owner_cold.json',  kw:'冷存 归档 冻结 历史', desc:'冷存归档主仓（强度冻结不消耗日常重排，经冷召回按需唤醒）。' },
+      { id:'027', name:'cold_awake_beam',   c:'#54BAC8', v1:'-', v2:'→50',    m:'recall_cold()',    kw:'冷存 唤醒 50 打捞 关联', desc:'与活跃/近期簇保持语义/实体桥接的冷存可唤醒备选记忆。' },
+      { id:'028', name:'entity_graph_hub',  c:'#CE8D49', v1:'-', v2:'+0.10',  m:'entity_graph.py',  kw:'实体图 联系 加权', desc:`${SNAP.entities.length} 个共享实体簇跨池连结，最高贡献 +0.10 召回加权。` },
+      { id:'029', name:'assoc_2hop_engine', c:'#CE8D49', v1:'-', v2:'2-hop',  m:'associate_engine', kw:'联想 2跳 链式 记忆联系', desc:`真实计算得 ${SNAP.edge_counts.total.toLocaleString()} 条语义/±3d/实体边支撑 2 跳联想。` },
+      { id:'030', name:'lessons_reflect',   c:'#CE8D49', v1:'-', v2:`${RT.lessons_count ?? 0}教/${RT.reflection_count ?? 0}反`, m:'lessons.py', kw:'教训 反思 经验', desc:`lessons=True & reflection=True 已启动（现存 ${RT.lessons_count ?? 0} 条教训 + ${RT.reflection_count ?? 0} 条反思）。` }
+    ]},
+    { title: 'OUTPUT / RECALL & DISTILL · 输出与双蒸馏', items: [
+      { id:'031', name:'hybrid_rerank',     c:'#58C790', v1:'-', v2:'Top-5',  m:'recall_engine.py', kw:'重排 召回 语义 强度 情绪', desc:'0.80×语义 + 0.15×强度 + 0.05×情绪，优先投送被高频召回记忆。' },
+      { id:'032', name:'budget_limiter',    c:'#58C790', v1:'-', v2:'3000字', m:'RECALL_MAX_CHARS', kw:'预算 字符 截断 3000 1500', desc:'长期注入严格≤3000 字、短期≤1500 字，与 DSH token 单位分离。' },
+      { id:'033', name:'session_init_pack', c:'#52B8CC', v1:'-', v2:'开场',   m:'session_init.py',  kw:'开场 注入 课表 工作记忆', desc:'companion 开场装配：工作记忆 + 课表生效窗 + 长期高权摘要。' },
+      { id:'034', name:'handover_card',     c:'#D2C662', v1:'-', v2:'120字',  m:'handover.json',    kw:'交接单 24h 120字 跨会话', desc:'handover=True 已启动；高新鲜短期记忆直连跨会话交接短卡（120 字 / 24h TTL）。' },
+      { id:'035', name:'dsh_distill_cards', c:'#659BE6', v1:'-', v2:SNAP.distill ? SNAP.distill.cards+'卡' : '未提供', m:'distillation/main', kw:'DSH 蒸馏 卡片 stale', desc:`${SNAP.distill ? `${SNAP.distill.batches} 批 ${SNAP.distill.cards} 张卡片（active ${SNAP.distill.active}）` : '当前来源未提供蒸馏卡片'}。` },
+      { id:'036', name:'vault_maintain',    c:'#58C790', v1:'-', v2:'Vault',  m:'maintain.py',      kw:'Vault 第二大脑 知识库 实体', desc:'可同步到独立笔记库。' },
+      { id:'037', name:'krouter_skills',    c:'#58C790', v1:'-', v2:'技能',   m:'skills.py',        kw:'krouter 技能 经验卡 转化 代码 工具', desc:'把可复用代码/工具/工作流记忆沉淀为 Agent 技能模板。' },
+      { id:'038', name:'dsh_prompt_slim',   c:'#58C790', v1:'-', v2:'白名单', m:'cordis.patch.yml', kw:'DSH 瘦身 压缩 白名单 上下文', desc:'短期高频上下文经白名单配置瘦身压缩，其余路径硬拒 403。' },
+      { id:'039', name:'recall_audit_log',  c:'#52B8CC', v1:'-', v2:SNAP.audit ? SNAP.audit.total_hits+'次' : '未提供', m:'recall_audit', kw:'审计 日志 召回 历史 真实', desc:`${SNAP.audit ? `累计 ${SNAP.audit.total_hits.toLocaleString()} 次召回记录` : '当前来源未提供召回审计日志'}。` },
+      { id:'040', name:'sha256_guard',      c:'#58C790', v1:'-', v2:'只读',   m:'isolation_audit',  kw:'安全 SHA-256 隔离 只读 验收', desc:'只读保护生产 5 池哈希零变化（详见本地审计）。' }
+    ]}
+  ];
+
+  // ===== STRICT 1:1 REAL MEMORY ROUTING: 1 REAL MEMORY === 1 DATA STREAM =====
+  const rand = mkRand(2026112142);
+  const flowColCounts = [new Array(10).fill(0), new Array(10).fill(0), new Array(10).fill(0), new Array(10).fill(0)];
+  const colFlowList = [Array.from({length:10},()=>[]), Array.from({length:10},()=>[]), Array.from({length:10},()=>[]), Array.from({length:10},()=>[])];
+
+  function routeMemory(m) {
+    // Col 0: Intake & Capture Stage (every active/enabled channel shows real routed items)
+    let r0 = 0;
+    if (m.p === 4) r0 = 1;
+    else if (m.sc) r0 = 5;
+    else if (m.p === 1 && m.s >= 80) r0 = 2;
+    else if (m.p === 1) r0 = 3;
+    else if ((m.tg && m.tg.some(t => /工具|tool|proc|代码|脚本/.test(t))) || /显卡|工具|脚本|代码|comfy|python/i.test(m.t)) r0 = 4;
+    else if (m.em >= 40) r0 = 6;
+    else if (m.p === 0 && !m.ep && m.mt !== 'lesson' && m.mt !== 'reflection' && !m.en?.length) r0 = 0; // direct dialogue turns
+    else if (m.p === 0 && m.en && m.en.length > 0) r0 = 7;
+    else if (m.p === 3 && m.s < 25 && m.rc === 0) r0 = 8; // buffered candidates / archive
+    else if (m.lk && m.lk.length > 0) r0 = 9;
+
+    // Col 1: Consolidation Level & Five-Layer Floor Gate (ALL 3 consolidation levels L1/L2/L3 active!)
+    let r1 = 4;
+    if (m.p === 3) r1 = 9;
+    else if (m.p === 2) r1 = 7;
+    else if (m.lv === 1) r1 = 0; // REAL triage_L1_min (level=1)!
+    else if (m.ep || m.mt === 'episode') r1 = 6;
+    else if (m.em >= 40) r1 = 8; // EMOTION_DECAY_PROTECT active streams!
+    else if (m.lv === 3 && !m.ep && m.f < 45) r1 = 2; // REAL consolidate_60 (level=3 >=60)!
+    else if ((m.mc || 1) > 1 || (m.p === 1 && m.rc > 0)) r1 = 3; // vector_dedupe merged!
+    else if (m.f >= 45) r1 = 5;
+    else if (m.lv === 2 && m.p === 0) r1 = 1; // REAL triage_L2_min (level=2 active memories)!
+    else if (m.f >= 15) r1 = 4;
+    else if (m.lv === 2) r1 = 1; // remaining shortterm/working level=2 streams!
+
+    // Col 2: Pool & Long-Term Consolidation Tier (real L0/L1/L2, episodes, lessons/reflection)
+    let r2 = 8;
+    if (m.mt === 'lesson' || m.mt === 'reflection') r2 = 9; // REAL 23 lesson+reflection items!
+    else if (m.p === 0 && (m.ep || m.mt === 'episode')) r2 = 3;
+    else if (m.p === 2) r2 = 4;
+    else if (m.p === 3) r2 = (m.lk && m.lk.some(x => x[0] < SNAP.pools.active)) ? 6 : 5;
+    else if (m.p === 0) r2 = (m.ag <= 7) ? 0 : (m.ag <= 30 ? 1 : 2);
+    else if (m.en && m.en.length > 0) r2 = 7;
+    else if (m.lk && m.lk.length > 0) r2 = 8;
+    else r2 = 9;
+
+    // Col 3: Output, Recall, Distill & Read-Only SHA-256 Audit Sink
+    let r3 = 8;
+    if (m.p === 4 || m.sc) r3 = 2;
+    else if (m.rc > 0 || (m.p === 0 && m.s >= 88)) r3 = 0;
+    else if (m.p === 1 && m.s >= 82) r3 = 3;
+    else if (/显卡|工具|脚本|代码|模型|python/i.test(m.t)) r3 = 6;
+    else if (m.en && m.en.length >= 2) r3 = 5;
+    else if (m.p === 0 && m.s >= 65) r3 = 1;
+    else if (m.p === 0) r3 = 4;
+    else if (m.p === 1) r3 = 7;
+    else if (m.p === 3 && (!m.en || !m.en.length) && m.s < 40) r3 = 9; // sealed read-only SHA-256 audited cold archive!
+
+    return [r0, r1, r2, r3];
+  }
+
+  const SEG_COLORS = ['#58C790', '#AFC9E8', '#C696DF', '#6EB3FA'];
+  const FLOWS = RAW_ITEMS.map((m, idx) => {
+    const [r0, r1, r2, r3] = routeMemory(m);
+    const cols = [r0, r1, r2, r3];
+    cols.forEach((ri, ci) => { flowColCounts[ci][ri]++; colFlowList[ci][ri].push(idx); });
+    const cHex = m.p === 2 ? '#E28AD4' : (m.sc || m.p === 4) ? '#5EE0AA' : m.p === 1 ? '#F2B866' : m.p === 3 ? '#7B94B5' : '#85C0FF';
+    const pName = m.sc ? '课表' : POOL_NAMES[m.p];
+    const kw = [m.t, m.id, m.k, pName, ...(m.en||[]), ...(m.tg||[])].join(' ').toLowerCase();
+    return {
+      i: idx, m, cols, kw, cHex,
+      oy: [(rand()-0.5)*22, (rand()-0.5)*16, (rand()-0.5)*22, (rand()-0.5)*22, (rand()-0.5)*22],
+      pinch: 0.36 + rand() * 0.28,
+      phase: (idx * 0.6180339887) % 1,
+      spd: 0.055 + (m.s / 100) * 0.075 + rand() * 0.04,
+      len: 0.16 + rand() * 0.14
+    };
+  });
+
+  // Update every card's real count badge strictly from FLOWS!
+  COLS.forEach((col, ci) => {
+    col.items.forEach((it, ri) => {
+      it.realCnt = flowColCounts[ci][ri];
+      it.v1 = it.realCnt + '条';
+    });
+  });
+
+  // Geometry layout calculator (balanced wide chambers across all viewport widths!)
+  let L = null, RECTS = [];
+  function computeLayout() {
+    const padX = Math.max(12, Math.round(W * 0.011)), topY = 26, botY = H - 10;
+    const cw = Math.min(182, Math.max(114, Math.floor(W * 0.104)));
+    const availGap = Math.max(160, W - padX * 2 - cw * 4 - 14);
+    const g0 = Math.round(availGap * 0.27);
+    const g1 = Math.round(availGap * 0.25);
+    const g2 = Math.round(availGap * 0.24);
+    const col0 = padX;
+    const busX = col0 + cw + g0 + 7;
+    const col1 = busX + 7 + g1;
+    const col2 = col1 + cw + g2;
+    const col3 = W - cw - padX;
+    const rowH = (botY - topY) / 10;
+    const rowMid = i => topY + (i + 0.5) * rowH;
+    L = { topY, botY, cw, colXs: [col0, col1, col2, col3], busX, rowH, rowMid, segs: [
+      [col0 + cw, busX - 7],
+      [busX + 7,  col1],
+      [col1 + cw, col2],
+      [col2 + cw, col3]
+    ]};
+
+    RECTS = [];
+    COLS.forEach((col, ci) => {
+      col.items.forEach((item, ri) => {
+        RECTS.push({ x: L.colXs[ci], y: topY + ri * rowH + 2, w: cw, h: rowH - 5, ci, ri, item });
+      });
+    });
+
+    // Bake strictly N_MEM (1,641) 1:1 4-chamber silk-cone trajectories onto offscreen buffer!
+    mistCv.width = Math.round(W * DPR);
+    mistCv.height = Math.round(H * DPR);
+    mctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    mctx.clearRect(0, 0, W, H);
+
+    mctx.strokeStyle = 'rgba(148, 174, 210, 0.032)';
+    mctx.lineWidth = 0.7;
+    for (let x = 18; x < W; x += 22) { mctx.beginPath(); mctx.moveTo(x, 0); mctx.lineTo(x, H); mctx.stroke(); }
+    for (let y = 18; y < H; y += 22) { mctx.beginPath(); mctx.moveTo(0, y); mctx.lineTo(W, y); mctx.stroke(); }
+
+    mctx.save();
+    mctx.globalCompositeOperation = 'lighter';
+    mctx.lineWidth = 0.52;
+    const mistAlphas = ['rgba(92,204,148,0.036)', 'rgba(205,222,245,0.034)', 'rgba(192,146,214,0.038)', 'rgba(104,172,238,0.038)'];
+    FLOWS.forEach(f => {
+      const busRow = (f.cols[0] * 0.45 + f.cols[1] * 0.55);
+      const ptsY = [rowMid(f.cols[0])+f.oy[0], rowMid(busRow)+f.oy[1], rowMid(f.cols[1])+f.oy[2], rowMid(f.cols[2])+f.oy[3], rowMid(f.cols[3])+f.oy[4]];
+      for (let seg = 0; seg < 4; seg++) {
+        const [x1, x2] = L.segs[seg];
+        const y1 = ptsY[seg], y2 = ptsY[seg + 1];
+        const cx1 = x1 + (x2 - x1) * f.pinch, cx2 = x2 - (x2 - x1) * (1 - f.pinch);
+        mctx.strokeStyle = mistAlphas[seg];
+        mctx.beginPath();
+        mctx.moveTo(x1, y1);
+        mctx.bezierCurveTo(cx1, y1, cx2, y2, x2, y2);
+        mctx.stroke();
+      }
+    });
+    mctx.restore();
+  }
+
+  function cubicPt(p0x, p0y, c1x, c1y, c2x, c2y, p3x, p3y, u) {
+    const m = 1 - u;
+    return {
+      x: m*m*m*p0x + 3*m*m*u*c1x + 3*m*u*u*c2x + u*u*u*p3x,
+      y: m*m*m*p0y + 3*m*m*u*c1y + 3*m*u*u*c2y + u*u*u*p3y
+    };
+  }
+
+  function isFlowHot(f) {
+    if (hovNode) return f.cols[hovNode.ci] === hovNode.ri;
+    if (searchQuery) return matchedFlowSet.has(f.i);
+    return false;
+  }
+
+  // ===== BOTTOM DISPATCH 10 WORKERS FROM REAL FLOW DISTRIBUTION =====
+  const WORKERS = [
+    ['shortterm',  '#52B8CC', Math.round((SNAP.pools.shortterm / N_MEM) * 100)],
+    ['active_L0',  '#58C790', Math.round((SNAP.active_tiers.L0 / Math.max(1, SNAP.pools.active)) * 100)],
+    ['active_L1',  '#8A78D8', Math.round((SNAP.active_tiers.L1 / Math.max(1, SNAP.pools.active)) * 100)],
+    ['intimate_70','#CC7AB6', Math.round((SNAP.pools.intimate / N_MEM) * 100 * 4)],
+    ['floor_45+',  '#659BE6', Math.round(((SNAP.tower_tiers[1] + SNAP.tower_tiers[2]) / N_MEM) * 100)],
+    ['cold_pool',  '#7B94B5', Math.round((SNAP.pools.cold / N_MEM) * 100)],
+    ['episode',    '#D2C662', Math.round((SNAP.active_tiers.episode / Math.max(1, SNAP.pools.active)) * 100 * 4)],
+    ['entity_32',  '#CE8D49', Math.min(98, SNAP.entities.length * 3)],
+    ['dsh_cards',  '#659BE6', SNAP.distill ? Math.round((SNAP.distill.active / Math.max(1, SNAP.distill.cards)) * 100 * 2) : 0],
+    ['sched_win',  '#58C790', Math.round((SNAP.tower_tiers[0] / N_MEM) * 100 * 10)]
+  ];
+  const dispEl = document.getElementById('dispGrid');
+  dispEl.innerHTML = WORKERS.map(([name, col, pct], i) =>
+    `<div class="dp-row"><span class="dp-lbl">${name}</span><div class="dp-bar"><div class="dp-fill" id="dw_${i}" style="width:${Math.min(100,pct)}%;background:${col}"></div></div><span class="dp-val" id="dv_${i}">${Math.min(100,pct)}</span></div>`
+  ).join('');
+
+  const HOT_STREAM = FLOWS.filter(f => f.m.p !== 3).slice(0, 60);
+  const STREAM_SRC = HOT_STREAM.length ? HOT_STREAM : FLOWS;
+  let logTick = 0;
+  function updateRunLog(t) {
+    const el = document.getElementById('runLog');
+    let html = '';
+    for (let i = 0; i < 6; i++) {
+      const f = STREAM_SRC[(logTick + i) % STREAM_SRC.length];
+      const nd = POOL_NAMES[f.m.p] + '·F' + Math.round(f.m.f);
+      const msg = escapeHtml(f.m.t.slice(0, 14));
+      const st = 'S' + Math.round(f.m.s);
+      const sec = f.m.time ? new Date(f.m.time).toLocaleDateString() : '—';
+      html += `<div><span class="tm">${sec}</span><span class="nd">${nd}</span><span class="ok">${msg}</span><span class="ms">${st}</span></div>`;
+    }
+    el.innerHTML = html;
+  }
+
+  // Sparkline history for bottom-right telemetry card
+  const sparkHist = new Array(44).fill(1);
+  function drawSpark() {
+    const r = sparkCv.getBoundingClientRect();
+    const sw = Math.max(120, r.width || 220), sh = 24;
+    if (sparkCv.width !== Math.round(sw * DPR)) { sparkCv.width = Math.round(sw * DPR); sparkCv.height = Math.round(sh * DPR); }
+    sctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    sctx.clearRect(0, 0, sw, sh);
+    sctx.strokeStyle = '#75B4FC'; sctx.lineWidth = 1.25;
+    sctx.beginPath();
+    sparkHist.forEach((v, i) => {
+      const x = (i / (sparkHist.length - 1)) * sw;
+      const y = sh - 3 - v * (sh - 6);
+      if (i === 0) sctx.moveTo(x, y); else sctx.lineTo(x, y);
+    });
+    sctx.stroke();
+  }
+
+  // ===== 60FPS MAIN RENDER LOOP =====
+  let lastLogStep = -1, simT = 0, lastTs = 0;
+  function render(ts) {
+    const dt = lastTs ? Math.min(0.05, (ts - lastTs) * 0.001) : 0.016;
+    lastTs = ts;
+    if (!paused) simT += dt;
+    if (surge > 0) surge = Math.max(0, surge - dt * 0.65);
+    const t = simT;
+
+    if (L) {
+      ctx.fillStyle = '#06080A';
+      ctx.fillRect(0, 0, W, H);
+
+      // 1. Blit pre-baked N_MEM (1,641) 1:1 additive silk-cone micro-filaments (instant!)
+      const hasFocus = Boolean(hovNode || searchQuery);
+      ctx.save();
+      ctx.globalAlpha = hasFocus ? 0.34 : 1.0;
+      ctx.drawImage(mistCv, 0, 0, W, H);
+      ctx.restore();
+
+      // 2. Column Headers + Central 512-Channel Vertical Bus
+      ctx.font = '600 9.5px "JetBrains Mono", "PingFang SC", sans-serif';
+      ctx.fillStyle = '#6E809A'; ctx.textAlign = 'left';
+      const shortTitles = ['INPUT · 短期与输入', 'GATE · 门控与地板', 'POOLS · 长期与冷存', 'OUTPUT · 输出与蒸馏'];
+      COLS.forEach((col, ci) => ctx.fillText(L.cw < 152 ? shortTitles[ci] : col.title, L.colXs[ci], 17));
+      ctx.textAlign = 'center'; ctx.fillStyle = '#9BC6FA';
+      ctx.fillText(L.cw < 152 ? `${N_MEM} REAL STREAMS` : `STATE IN · ${N_MEM.toLocaleString()} REAL STREAMS`, L.busX, 17);
+      ctx.textAlign = 'left';
+
+      // Central vertical 512-channel LED Bus bar
+      ctx.fillStyle = '#0A0E15';
+      ctx.strokeStyle = 'rgba(164, 194, 232, 0.34)'; ctx.lineWidth = 1;
+      ctx.fillRect(L.busX - 7, L.topY, 14, L.botY - L.topY);
+      ctx.strokeRect(L.busX - 7, L.topY, 14, L.botY - L.topY);
+      const busSlots = 92;
+      const slotH = (L.botY - L.topY - 8) / busSlots;
+      for (let i = 0; i < busSlots; i++) {
+        const wave = Math.sin(i * 0.42 - t * 5.2) + Math.cos(i * 0.17 + t * 2.4);
+        const lit = wave > 0.35 || (surge > 0.2 && wave > -0.4);
+        ctx.fillStyle = lit ? 'rgba(210, 234, 255, 0.88)' : 'rgba(101, 155, 230, 0.14)';
+        ctx.fillRect(L.busX - 3.5, L.topY + 4 + i * slotH, 7, Math.max(1.5, slotH * 0.52));
+      }
+
+      // 3. STRICT 1:1 LIVE ANIMATED COMET PACKETS: EXACTLY N_MEM = 1,641 STREAMS TRAVERSING CHAMBERS 0..3!
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      FLOWS.forEach(f => {
+        const hot = isFlowHot(f);
+        if (hasFocus && !hot) return; // keep focus crystal-clear at exact K / N_MEM count!
+        if (f.prog === undefined) f.prog = f.phase;
+        const spd = f.spd * (hot ? 1.65 : (1.0 + surge * 1.65));
+        if (!paused) f.prog = (f.prog + dt * spd) % 1;
+        const totalU = f.prog * 4.0;
+        const seg = Math.min(3, Math.floor(totalU));
+        const u = totalU - seg;
+        const busRow = f.cols[0] * 0.45 + f.cols[1] * 0.55;
+        const segY1 = seg === 0 ? L.rowMid(f.cols[0]) + f.oy[0] : seg === 1 ? L.rowMid(busRow) + f.oy[1] : seg === 2 ? L.rowMid(f.cols[1]) + f.oy[2] : L.rowMid(f.cols[2]) + f.oy[3];
+        const segY2 = seg === 0 ? L.rowMid(busRow) + f.oy[1]   : seg === 1 ? L.rowMid(f.cols[1]) + f.oy[2] : seg === 2 ? L.rowMid(f.cols[2]) + f.oy[3] : L.rowMid(f.cols[3]) + f.oy[4];
+        const [x1, x2] = L.segs[seg];
+        const cx1 = x1 + (x2 - x1) * f.pinch, cx2 = x2 - (x2 - x1) * (1 - f.pinch);
+
+        if (hot) {
+          // Highlight full 4-stage path when hovered or search-matched
+          ctx.strokeStyle = 'rgba(130, 198, 255, 0.18)';
+          ctx.lineWidth = 0.72;
+          ctx.beginPath(); ctx.moveTo(x1, segY1); ctx.bezierCurveTo(cx1, segY1, cx2, segY2, x2, segY2); ctx.stroke();
+        }
+
+        const u0 = Math.max(0, u - f.len);
+        const pH = cubicPt(x1, segY1, cx1, segY1, cx2, segY2, x2, segY2, u);
+        const pM = cubicPt(x1, segY1, cx1, segY1, cx2, segY2, x2, segY2, (u0 + u) * 0.5);
+        const pT = cubicPt(x1, segY1, cx1, segY1, cx2, segY2, x2, segY2, u0);
+
+        ctx.strokeStyle = hot ? 'rgba(150, 212, 255, 0.72)' : 'rgba(182, 214, 248, 0.30)';
+        ctx.lineWidth = hot ? 1.45 : 0.78;
+        ctx.beginPath(); ctx.moveTo(pT.x, pT.y); ctx.quadraticCurveTo(pM.x, pM.y, pH.x, pH.y); ctx.stroke();
+
+        ctx.fillStyle = hot ? '#FFFFFF' : f.cHex;
+        ctx.beginPath(); ctx.arc(pH.x, pH.y, hot ? 1.75 : 0.92, 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.restore();
+
+      // 4. DRAW ALL 40 PRECISION MICRO-TELEMETRY CARDS
+      RECTS.forEach(rc => {
+        const isHov = hovNode && hovNode.item.id === rc.item.id;
+        const isMatch = matchedModSet.has(rc.item.id);
+        const dim = hasFocus && !isHov && !isMatch;
+
+        ctx.save();
+        const isOff = Boolean(rc.item.disabled);
+        ctx.globalAlpha = dim ? 0.34 : (isOff ? 0.52 : 1.0);
+
+        ctx.fillStyle = (isHov || isMatch) ? '#131B29' : (isOff ? '#080A0E' : '#0B0F16');
+        ctx.strokeStyle = (isHov || isMatch) ? 'rgba(130, 192, 255, 0.78)' : (isOff ? 'rgba(148, 174, 210, 0.14)' : 'rgba(148, 174, 210, 0.16)');
+        ctx.lineWidth = (isHov || isMatch) ? 1.15 : 0.7;
+        if (isOff) ctx.setLineDash([3, 3]);
+        ctx.fillRect(rc.x, rc.y, rc.w, rc.h);
+        ctx.strokeRect(rc.x, rc.y, rc.w, rc.h);
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = rc.item.c;
+        ctx.fillRect(rc.x, rc.y, rc.w, 12);
+        ctx.fillStyle = isOff ? '#C2CEDE' : '#070A0E';
+        ctx.font = '700 8.5px "JetBrains Mono", Consolas, monospace';
+        const maxTitleChars = Math.max(10, Math.floor((rc.w - 30) / 5.2));
+        ctx.fillText(rc.item.name.slice(0, maxTitleChars), rc.x + 5, rc.y + 9);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = isOff ? 'rgba(194,206,222,0.72)' : 'rgba(7,10,14,0.72)';
+        ctx.fillText(rc.item.id, rc.x + rc.w - 4, rc.y + 9);
+        ctx.textAlign = 'left';
+
+        const my1 = rc.y + 24, my2 = rc.y + 36;
+        ctx.font = '9px "JetBrains Mono", "PingFang SC", sans-serif';
+        const maxSrcChars = Math.max(7, Math.floor((rc.w - 48) / 5.4));
+        ctx.fillStyle = '#7C8FA9'; ctx.fillText(rc.item.m.slice(0, maxSrcChars), rc.x + 5, my1);
+        ctx.textAlign = 'right'; ctx.fillStyle = isOff ? '#7888A0' : '#E6F0FC'; ctx.fillText(rc.item.v1, rc.x + rc.w - 5, my1);
+        ctx.textAlign = 'left';
+
+        if (rc.h >= 38) {
+          const ratio = isOff ? 0 : Math.min(1.0, Math.sqrt((rc.item.realCnt || 0) / Math.max(1, N_MEM * 0.45)));
+          const bFill = isOff ? 0 : (0.08 + ratio * 0.88);
+          ctx.fillStyle = '#151E2E'; ctx.fillRect(rc.x + 5, my2 - 4, rc.w - 46, 3.2);
+          if (bFill > 0) {
+            ctx.fillStyle = (isHov || isMatch) ? '#9AC8FF' : rc.item.c;
+            ctx.fillRect(rc.x + 5, my2 - 4, (rc.w - 46) * bFill, 3.2);
+          }
+          ctx.textAlign = 'right'; ctx.fillStyle = isOff ? '#D8A25E' : '#92A8C4'; ctx.fillText(rc.item.v2, rc.x + rc.w - 5, my2);
+          ctx.textAlign = 'left';
+        }
+        ctx.restore();
+      });
+    }
+
+    // Periodic live telemetry updates (2.5 Hz)
+    const step = Math.floor(t * 2.5);
+    if (step !== lastLogStep) {
+      lastLogStep = step;
+      logTick++;
+      updateRunLog(t);
+      const hotCnt = hovNode ? hovNode.item.realCnt : searchQuery ? matchedFlowSet.size : N_MEM;
+      document.getElementById('cntFlight').textContent = (hovNode || searchQuery) ? `${hotCnt} / ${N_MEM}` : `${N_MEM} / ${N_MEM}`;
+      sparkHist.push(hotCnt / N_MEM);
+      if (sparkHist.length > 44) sparkHist.shift();
+      drawSpark();
+    }
+
+    requestAnimationFrame(render);
+  }
+
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    W = Math.max(600, r.width); H = Math.max(360, r.height);
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    computeLayout();
+  }
+
+  // ===== INTERACTIVE HOVER & FULL 1,641-ITEM LIVE SEARCH =====
+  cv.addEventListener('mousemove', e => {
+    const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+    const hit = RECTS.find(rc => mx >= rc.x && mx <= rc.x + rc.w && my >= rc.y && my <= rc.y + rc.h);
+    hovNode = hit || null;
+    if (hit) {
+      cv.style.cursor = 'pointer';
+      const fIds = colFlowList[hit.ci][hit.ri] || [];
+      const sample = fIds.slice(0, 2).map(id => FLOWS[id].m.t.slice(0, 14)).join(' · ');
+      document.getElementById('hpName').textContent = hit.item.name;
+      document.getElementById('hpTag').textContent = `${hit.item.realCnt} / ${N_MEM} 条流 · ${hit.item.v2}`;
+      document.getElementById('hpDesc').textContent = hit.item.desc + (sample ? `\n实样：${sample}` : '');
+      document.getElementById('hpSrc').textContent = hit.item.m;
+      document.getElementById('hpFlow').textContent = `${hit.item.realCnt} 条真实记忆流已高亮`;
+      document.getElementById('cntFlight').textContent = `${hit.item.realCnt} / ${N_MEM}`;
+      hPill.style.display = 'block';
+      const px = (hit.x + hit.w + 290 < W) ? (hit.x + hit.w + 12) : (hit.x - 290);
+      const py = Math.max(12, Math.min(H - 120, hit.y));
+      hPill.style.left = px + 'px'; hPill.style.top = py + 'px';
+    } else {
+      cv.style.cursor = 'crosshair';
+      hPill.style.display = 'none';
+      document.getElementById('cntFlight').textContent = searchQuery ? `${matchedFlowSet.size} / ${N_MEM}` : `${N_MEM} / ${N_MEM}`;
+    }
+  });
+  cv.addEventListener('mouseleave', () => {
+    hovNode = null; hPill.style.display = 'none';
+    document.getElementById('cntFlight').textContent = searchQuery ? `${matchedFlowSet.size} / ${N_MEM}` : `${N_MEM} / ${N_MEM}`;
+  });
+
+  const qInp = document.getElementById('qInp'), qClr = document.getElementById('qClr');
+  function runQuery(v) {
+    searchQuery = v.trim().toLowerCase();
+    qClr.classList.toggle('show', searchQuery.length > 0);
+    matchedModSet.clear();
+    matchedFlowSet.clear();
+    if (!searchQuery) {
+      document.getElementById('cntFlight').textContent = `${N_MEM} / ${N_MEM}`;
+      document.getElementById('gtStatus').textContent = '1:1 LIVE';
+      return;
+    }
+    const terms = searchQuery.split(/\s+/).filter(Boolean);
+    FLOWS.forEach(f => {
+      if (terms.every(tk => f.kw.includes(tk))) {
+        matchedFlowSet.add(f.i);
+        f.cols.forEach((ri, ci) => matchedModSet.add(COLS[ci].items[ri].id));
+      }
+    });
+    COLS.forEach(c => c.items.forEach(it => {
+      const hay = (it.name + ' ' + it.m + ' ' + it.kw + ' ' + it.desc).toLowerCase();
+      if (terms.every(tk => hay.includes(tk))) matchedModSet.add(it.id);
+    }));
+    document.getElementById('cntFlight').textContent = `${matchedFlowSet.size} / ${N_MEM}`;
+    document.getElementById('gtStatus').textContent = `HIT ${matchedFlowSet.size}`;
+    surge = 0.75;
+  }
+  qInp.addEventListener('input', e => runQuery(e.target.value));
+  qClr.addEventListener('click', () => { qInp.value = ''; runQuery(''); });
+  document.getElementById('btnSurge').addEventListener('click', () => { surge = 1.0; });
+  document.getElementById('btnPause').addEventListener('click', function(){ paused = !paused; this.textContent = '流转：' + (paused ? '暂停' : '开'); });
+
+  const uq = new URLSearchParams(location.search).get('q');
+  if (uq) { qInp.value = uq; runQuery(uq); }
+
+  window.captureView = () => ({ query: qInp.value, paused });
+  const restored = parent.restoredView;
+  if (restored?.mod === 'm2') {
+    qInp.value = restored.query;
+    runQuery(restored.query);
+    if (restored.paused) document.getElementById('btnPause').click();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+  updateRunLog(0);
+  drawSpark();
+  requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>

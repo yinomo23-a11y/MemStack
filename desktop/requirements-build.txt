@@ -1,0 +1,6 @@
+pywebview==6.2.1
+pyinstaller==6.22.3
+numpy==2.5.4
+PyYAML==6.0.3
+zstandard==0.25.0
+filelock==3.29.1

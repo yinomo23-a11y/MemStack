@@ -151,7 +151,7 @@ def main():
         mods = []
         for dirpath, dirnames, filenames in os.walk(REPO):
             dirnames[:] = [d for d in dirnames
-                           if d not in {"__pycache__", "data", "state", ".git"}]
+                           if d not in {"__pycache__", "data", "state", ".git", "desktop"}]
             for f in filenames:
                 if not f.endswith(".py") or f.startswith("__"):
                     continue
