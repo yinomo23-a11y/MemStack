@@ -173,14 +173,21 @@ def recall_core(mgr, query, emotion=None, entities=None, *,
     except Exception as exc:
         out['errors'].append('策略复筛失败（保留原始结果）: '+type(exc).__name__)
 
-    # ── 步骤 C：语义相关度复筛（失败保留原结果） ──
+    # ── 步骤 C：语义相关度复筛（动态门槛：主线索达标时保留次级线索，失败保留原结果） ──
     try:
         from config import RECALL_SEMANTIC_MIN_SIM
-        from recall_engine import cosine_similarity
+        from recall_engine import cosine_similarity, effective_min_similarity
         if valid_vector(out.get('query_embedding')):
+            qemb = out['query_embedding']
+            all_sims = [
+                cosine_similarity(qemb, getattr(hit[0] if isinstance(hit, (tuple, list)) else hit, 'embedding', []))
+                for key in ('results', '_shortterm_results', '_cold_results', '_permanent_results', '_distilled_results')
+                for hit in out.get(key, [])
+            ]
+            eff_min = effective_min_similarity(all_sims, RECALL_SEMANTIC_MIN_SIM)
             for key in ('results','_shortterm_results','_cold_results','_permanent_results','_distilled_results'):
                 out[key] = [hit for hit in out.get(key,[]) if cosine_similarity(
-                    out['query_embedding'],getattr(hit[0] if isinstance(hit,(tuple,list)) else hit,'embedding',[])) >= RECALL_SEMANTIC_MIN_SIM]
+                    qemb, getattr(hit[0] if isinstance(hit,(tuple,list)) else hit,'embedding',[])) >= eff_min]
     except Exception as exc:
         out['errors'].append('相关性复筛失败（保留原始结果）: '+type(exc).__name__)
 

@@ -23,7 +23,7 @@ See ``.env.example`` for every supported variable.
 
 import os
 
-VERSION = "3.1.0"
+VERSION = "3.2.0"
 
 # ── Root and data directory ──────────────────────────────────────────────────
 
@@ -178,6 +178,9 @@ RECALL_MAX_CHARS = 3000
 ACTIVE_WINDOW_BONUS = 0.08
 ACTIVE_WINDOW_MIN_SIM = 0.58
 RECALL_SEMANTIC_MIN_SIM = 0.45
+RECALL_DYNAMIC_MIN_ENABLED = True
+RECALL_DYNAMIC_MIN_FLOOR = 0.35
+RECALL_DYNAMIC_MIN_MARGIN = 0.25
 # Strength governs lifecycle (decay, demotion, forgetting), not relevance rank.
 WEIGHT_SIM = 0.95
 WEIGHT_STRENGTH = 0.0

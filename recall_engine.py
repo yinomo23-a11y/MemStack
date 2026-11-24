@@ -12,6 +12,7 @@ except ImportError:
 
 from config import (
     WEIGHT_SIM, WEIGHT_STRENGTH, WEIGHT_EMOTION,
+    RECALL_DYNAMIC_MIN_ENABLED, RECALL_DYNAMIC_MIN_FLOOR, RECALL_DYNAMIC_MIN_MARGIN,
     ENTITY_BONUS, ENTITY_BONUS_MAX, RECALL_TOP_K, COLD_AWAKE_STRENGTH,
     COLD_RECALL_TOP_K, COLD_RECALL_MIN_SIM,
     LAYER_DECAY_IN_RANKING, LAYER_THRESHOLDS, LAYER_L1_WEIGHT, LAYER_L2_WEIGHT,
@@ -94,6 +95,27 @@ def _batch_cosine_similarities(query_embedding: List[float], candidates: List[Me
         except Exception:
             pass
     return [cosine_similarity(query_embedding, getattr(mem, "embedding", None) or []) for mem in candidates]
+
+
+def effective_min_similarity(sims, min_similarity: float = None):
+    """Per-query dynamic similarity floor.
+
+    Enforces `min_similarity` as the entry gate on the best candidate (`max_sim`),
+    then relaxes secondary candidates down to
+    `min(min_similarity, max(RECALL_DYNAMIC_MIN_FLOOR, max_sim - RECALL_DYNAMIC_MIN_MARGIN))`
+    so multi-hop / secondary clues are not pruned when a strong primary match exists.
+    """
+    if min_similarity is None:
+        return None
+    base = float(min_similarity)
+    if not RECALL_DYNAMIC_MIN_ENABLED or not sims:
+        return base
+    max_sim = max(sims)
+    if max_sim < base:
+        return base
+    floor = min(base, float(RECALL_DYNAMIC_MIN_FLOOR))
+    margin = max(0.0, float(RECALL_DYNAMIC_MIN_MARGIN))
+    return min(base, max(floor, max_sim - margin))
 
 
 def _credibility_of(mem: MemoryItem) -> float:
@@ -253,12 +275,13 @@ def hybrid_rerank(
     from config import ACTIVE_WINDOW_BONUS, ACTIVE_WINDOW_MIN_SIM
 
     sims = _batch_cosine_similarities(query_embedding, candidates)
+    eff_min_sim = effective_min_similarity(sims, min_similarity)
     for mem, sim in zip(candidates, sims):
         # on_demand 的记忆不进普通候选池。只在排序里乘小系数不够 ——
         # 语义足够像时仍可能挤进 Top-K，等于没沉睡。
         if mode == "active" and getattr(mem, "recall_mode", "active") == "on_demand":
             continue
-        if min_similarity is not None and sim < min_similarity:
+        if eff_min_sim is not None and sim < eff_min_sim:
             continue
         if _is_recallable is not None:
             try:
@@ -1019,8 +1042,9 @@ def rrf_recall(
         note_silent_error('is_recallable', _e)
         _is_recallable = None
     sims = _batch_cosine_similarities(query_embedding, candidates)
+    eff_min_sim = effective_min_similarity(sims, min_similarity)
     for mem, similarity in zip(candidates, sims):
-        if min_similarity is not None and similarity < min_similarity:
+        if eff_min_sim is not None and similarity < eff_min_sim:
             continue
         mid = mem.mem_id
         # meta_only / no 门控（跟 hybrid_rerank 同一套，见那边的长注释）
@@ -1158,6 +1182,22 @@ def strength_invariance_selftest() -> None:
     for pm, bs in zip(probe_mems, batch_sims):
         sc = cosine_similarity(q, pm.embedding)
         assert abs(bs - sc) < 1e-5, (bs, sc)
+
+    # 7. 动态相似度门槛：无关查询（max_sim < 0.45）全拦截；主线索达标时保留次级线索（>= 0.35）
+    m_primary = MemoryItem("主线索：下周去杭州出差", create_time=now, last_recalled_at=now)
+    m_secondary = MemoryItem("次线索：杭州西湖附近酒店预订", create_time=now, last_recalled_at=now)
+    m_noise = MemoryItem("完全无关的闲聊", create_time=now, last_recalled_at=now)
+    m_primary.embedding = [0.62, math.sqrt(1 - 0.62**2), 0.0]
+    m_secondary.embedding = [0.40, math.sqrt(1 - 0.40**2), 0.0]
+    m_noise.embedding = [0.25, math.sqrt(1 - 0.25**2), 0.0]
+    dyn_hits = hybrid_rerank(q, [], {"valence": "neutral", "intensity": 0},
+                             [m_primary, m_secondary, m_noise], top_k=3,
+                             update_strength=False, min_similarity=0.45)
+    assert [m.mem_id for m, _ in dyn_hits] == [m_primary.mem_id, m_secondary.mem_id], dyn_hits
+    rej_hits = hybrid_rerank(q, [], {"valence": "neutral", "intensity": 0},
+                             [m_secondary, m_noise], top_k=3,
+                             update_strength=False, min_similarity=0.45)
+    assert rej_hits == [], rej_hits
 
     print("recall_engine.strength_invariance selftest OK")
 

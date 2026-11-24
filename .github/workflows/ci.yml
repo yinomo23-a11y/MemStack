@@ -37,3 +37,6 @@ jobs:
 
       - name: Run reproducible public benchmark smoke check
         run: python tests/benchmark_public.py --quick
+
+      - name: Run 210-day managed lifecycle vs unmanaged RAG control check
+        run: python tests/eval_lifecycle_value.py --embed offline

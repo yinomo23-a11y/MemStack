@@ -153,7 +153,7 @@ Connect clients that may read and modify the configured store, for example:
 - [docs/模型原理说明.md](docs/模型原理说明.md) — Chinese overview, architecture, CLI/MCP quickstart, distillation & skill cards
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module boundaries and data flow
 - [docs/OPERATIONS.md](docs/OPERATIONS.md) — deployment, daily/weekly checks, backup, and failure signals
-- [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — reproducible latency benchmarks (up to 10k items), real-store ablation, and LongMemEval-S public evaluation
+- [docs/BENCHMARKS.md](docs/BENCHMARKS.md) — 210-day managed lifecycle vs unmanaged RAG experiment, full 500-question LongMemEval-S results, real-store ablation, and 10k-item latency scaling
 
 ### Scope and design boundaries
 

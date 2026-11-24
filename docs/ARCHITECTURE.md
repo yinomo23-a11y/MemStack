@@ -97,6 +97,12 @@ placeholder, outside its validity window, or when its source evidence is
 missing. Scoring is expensive and, more importantly, a record that should never
 appear must not be able to influence ranking even by taking a slot.
 
+**Dynamic similarity cutoff**: `recall_engine.effective_min_similarity()` keeps
+`RECALL_SEMANTIC_MIN_SIM` (`0.45`) as the entry gate on the best candidate
+(`max_sim`), then relaxes secondary candidates to
+`min(0.45, max(0.35, max_sim - 0.25))` so multi-hop secondary clues are not
+pruned when a strong primary match exists.
+
 ---
 
 ## Memory item lifecycle

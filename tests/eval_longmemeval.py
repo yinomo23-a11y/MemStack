@@ -239,9 +239,11 @@ def _run_system(system: str, q_text: str, q_vec: list[float], q_ents: list[str],
         orig = (
             re_mod.WEIGHT_SIM, re_mod.WEIGHT_STRENGTH, re_mod.WEIGHT_EMOTION,
             re_mod.LAYER_DECAY_IN_RANKING, re_mod.LAYER_L1_WEIGHT, re_mod.LAYER_L2_WEIGHT,
+            re_mod.RECALL_DYNAMIC_MIN_ENABLED,
         )
         re_mod.WEIGHT_SIM, re_mod.WEIGHT_STRENGTH, re_mod.WEIGHT_EMOTION = 0.80, 0.15, 0.05
         re_mod.LAYER_DECAY_IN_RANKING, re_mod.LAYER_L1_WEIGHT, re_mod.LAYER_L2_WEIGHT = True, 0.8, 0.5
+        re_mod.RECALL_DYNAMIC_MIN_ENABLED = False
         try:
             res = re_mod.hybrid_rerank(
                 q_vec, q_ents, {"valence": "neutral", "intensity": 0},
@@ -252,14 +254,26 @@ def _run_system(system: str, q_text: str, q_vec: list[float], q_ents: list[str],
             (
                 re_mod.WEIGHT_SIM, re_mod.WEIGHT_STRENGTH, re_mod.WEIGHT_EMOTION,
                 re_mod.LAYER_DECAY_IN_RANKING, re_mod.LAYER_L1_WEIGHT, re_mod.LAYER_L2_WEIGHT,
+                re_mod.RECALL_DYNAMIC_MIN_ENABLED,
             ) = orig
-    elif system == "memstack_hybrid_v310":
+    elif system == "memstack_fixed045_v310":
+        orig_dyn = re_mod.RECALL_DYNAMIC_MIN_ENABLED
+        re_mod.RECALL_DYNAMIC_MIN_ENABLED = False
+        try:
+            res = re_mod.hybrid_rerank(
+                q_vec, q_ents, {"valence": "neutral", "intensity": 0},
+                cands, top_k=top_k, update_strength=False, query_text=q_text, min_similarity=0.45,
+            )
+            out = [m.mem_id for m, _ in res]
+        finally:
+            re_mod.RECALL_DYNAMIC_MIN_ENABLED = orig_dyn
+    elif system == "memstack_hybrid_v320":
         res = re_mod.hybrid_rerank(
             q_vec, q_ents, {"valence": "neutral", "intensity": 0},
             cands, top_k=top_k, update_strength=False, query_text=q_text, min_similarity=0.45,
         )
         out = [m.mem_id for m, _ in res]
-    elif system == "memstack_rrf_v310":
+    elif system == "memstack_rrf_v320":
         res = re_mod.rrf_recall(
             q_vec, q_ents, {"valence": "neutral", "intensity": 0},
             cands, top_k=top_k, query_text=q_text, min_similarity=0.45,
@@ -285,7 +299,7 @@ def evaluate(questions: list[dict], cache: EmbedCache) -> dict:
     cache.get_many(all_texts + q_texts, batch_size=32)
     embed_sec = round(time.perf_counter() - t_embed0, 2)
 
-    systems = ["pure_cosine", "memstack_legacy_v300", "memstack_hybrid_v310", "memstack_rrf_v310"]
+    systems = ["pure_cosine", "memstack_legacy_v300", "memstack_fixed045_v310", "memstack_hybrid_v320", "memstack_rrf_v320"]
     stats = {
         s: {
             "n_answerable": 0, "r1": 0, "r3": 0, "r5": 0, "all5": 0, "mrr": 0.0,
@@ -407,8 +421,8 @@ def main(argv=None):
             f"{name:24s} | {s['r1']:6.1%} | {s['r3']:6.1%} | {s['r5']:6.1%} | "
             f"{s['all5']:6.1%} | {s['mrr']:7.4f} | {s['median_ms']:6.2f}"
         )
-    print("\n[Per-Category Breakdown: memstack_hybrid_v310 vs pure_cosine]")
-    hyb = report["systems"]["memstack_hybrid_v310"]["by_type"]
+    print("\n[Per-Category Breakdown: memstack_hybrid_v320 vs pure_cosine]")
+    hyb = report["systems"]["memstack_hybrid_v320"]["by_type"]
     cos = report["systems"]["pure_cosine"]["by_type"]
     for qtype in sorted(hyb):
         h, c = hyb[qtype], cos[qtype]

@@ -30,6 +30,7 @@ jobs:
           python tests/run_all.py
           python tools/privacy_scan.py --strict
           python tests/benchmark_public.py --quick
+          python tests/eval_lifecycle_value.py --embed offline
 
       - name: Publish GitHub Release
         env:
