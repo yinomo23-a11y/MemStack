@@ -140,31 +140,57 @@ def _dedupe_rows_by_id(rows: list) -> list:
     return out
 
 
+def _with_memories(doc: dict, memories: list) -> dict:
+    """保留池文档的顶层元数据（如 _operation_receipts），仅替换 memories 列表。"""
+    out = dict(doc) if isinstance(doc, dict) else {}
+    out["memories"] = memories
+    return out
+
+
+def _working_receipt_key(session_key: str, raw_row: dict) -> str:
+    """为工作记忆生成稳定的巩固收据键，保证活跃库落盘后重跑不重复合并强化。"""
+    mid = str((raw_row or {}).get("mem_id") or "").strip()
+    if mid:
+        return "working:" + mid
+    import hashlib as _hl
+    payload = json.dumps([
+        str(session_key or ""),
+        (raw_row or {}).get("create_time"),
+        str((raw_row or {}).get("content") or ""),
+    ], ensure_ascii=False, default=str)
+    return "working:anon:" + _hl.sha256(payload.encode("utf-8")).hexdigest()[:24]
+
+
 def _save_active_cold_transition(active_data: dict, cold_data: dict,
                                  previous_active: dict, previous_cold: dict) -> None:
     """持久化双向迁移：先写目标副本，再收敛来源，失败也只重复、不丢失。
 
     active/cold 是两个独立文件，无法靠单次 os.replace 获得跨文件事务。
-    有迁移时先写包含旧数据和新增目标副本的 staging 文件；随后才写最终列表。
-    因此任意两次写盘之间失败，至少有一份副本存在，下次巩固可按 ID 收敛。
+    策略：
+      · 纯 active→cold（无 cold 移除）：先写 cold，再写 active。
+      · 纯 cold→active / 无新增 cold：先写 active，再写 cold。
+      · 双向迁移（同时有新增 cold 与移除 cold）：
+          1) 先写 staged_cold（旧 cold + 新增 cold，暂留待移除冷记录）；
+          2) 再写最终 active（落盘全部提升、唤醒与收据，移除已入冷存的活跃记录）；
+          3) 最后写最终 cold（收敛已唤醒/移除的冷记录）。
+    任意步骤失败，至少一份副本留在磁盘，且 active 不会提前写入无收据的半提交状态。
     """
-    old_active_rows = list(previous_active.get("memories", []) or [])
-    old_cold_rows = list(previous_cold.get("memories", []) or [])
-    final_active_rows = list(active_data.get("memories", []) or [])
-    final_cold_rows = list(cold_data.get("memories", []) or [])
-    old_active_ids = {r.get("mem_id") for r in old_active_rows if r.get("mem_id")}
-    old_cold_ids = {r.get("mem_id") for r in old_cold_rows if r.get("mem_id")}
-    added_active = [r for r in final_active_rows
-                    if r.get("mem_id") and r.get("mem_id") not in old_active_ids]
+    old_cold_rows = list((previous_cold or {}).get("memories", []) or [])
+    final_cold_rows = list((cold_data or {}).get("memories", []) or [])
+    old_cold_ids = {r.get("mem_id") for r in old_cold_rows if isinstance(r, dict) and r.get("mem_id")}
+    final_cold_ids = {r.get("mem_id") for r in final_cold_rows if isinstance(r, dict) and r.get("mem_id")}
     added_cold = [r for r in final_cold_rows
-                  if r.get("mem_id") and r.get("mem_id") not in old_cold_ids]
+                  if isinstance(r, dict) and r.get("mem_id") and r.get("mem_id") not in old_cold_ids]
+    removed_cold_ids = old_cold_ids - final_cold_ids
 
-    if added_active or added_cold:
-        staged_active = dict(previous_active)
-        staged_cold = dict(previous_cold)
-        staged_active["memories"] = _dedupe_rows_by_id(old_active_rows + added_active)
+    if added_cold and not removed_cold_ids:
+        _save_json(LONG_TERM_COLD_PATH, cold_data)
+        _save_json(LONG_TERM_ACTIVE_PATH, active_data)
+        return
+
+    if added_cold and removed_cold_ids:
+        staged_cold = dict(previous_cold) if isinstance(previous_cold, dict) else {}
         staged_cold["memories"] = _dedupe_rows_by_id(old_cold_rows + added_cold)
-        _save_json(LONG_TERM_ACTIVE_PATH, staged_active)
         _save_json(LONG_TERM_COLD_PATH, staged_cold)
 
     _save_json(LONG_TERM_ACTIVE_PATH, active_data)
@@ -543,7 +569,11 @@ def run_episode_aggregation(stats: dict, current_ts: float, active_list: list,
         stats["episodes_error"] = "短期层文件不存在，跳过聚合"
         return []
 
-    st_raw = [d for d in _load_json(SHORT_TERM_PATH).get("memories", [])
+    _st_doc = _load_json(SHORT_TERM_PATH)
+    _st_all_rows = _st_doc.get("memories", []) or []
+    _st_excluded = [d for d in _st_all_rows
+                    if d.get("mem_type") in ("superseded", "unavailable")]
+    st_raw = [d for d in _st_all_rows
               if d.get("mem_type") not in ("superseded", "unavailable")]
     if not st_raw:
         # ★ 2026-11-09 加诊断：光说「为空」不够，要知道是哪种空。
@@ -862,7 +892,7 @@ def run_episode_aggregation(stats: dict, current_ts: float, active_list: list,
                 "mem": _before_cnt, "disk_before": _disk_before}
         except Exception:
             pass
-        _save_json(SHORT_TERM_PATH, {"memories": [m.to_dict() for m in shortterm_mems]})
+        _save_json(SHORT_TERM_PATH, _with_memories(_st_doc, [m.to_dict() for m in shortterm_mems] + _st_excluded))
 
         # ★ 2026-11-09 加「打标清单」留痕：
         #   问题是「孤儿反复出现」，但每次手动跑巩固都能清掉。
@@ -1336,17 +1366,20 @@ def _consolidate_locked() -> dict:
         working_data = _load_json(WORKING_MEM_PATH)
         active_data = _load_json(LONG_TERM_ACTIVE_PATH)
         cold_data = _load_json(LONG_TERM_COLD_PATH)
+        import copy as _copy
+        previous_active = _copy.deepcopy(active_data)
+        previous_cold = _copy.deepcopy(cold_data)
 
         # 读取所有会话的工作记忆（独立文件结构：{"sessions": {会话ID: {working_memory: [...]}}}）
         # 老桥接没有给条目写 session_id，会话键是唯一可信的归属来源。
-        working_list = []
+        working_entries = []
         sessions_dict = working_data.get("sessions", {})
         for _session_key, sess_info in sessions_dict.items():
             for d in sess_info.get("working_memory", []):
                 _wm = MemoryItem.from_dict(d)
                 if not getattr(_wm, "session_id", None):
                     _wm.session_id = _session_key
-                working_list.append(_wm)
+                working_entries.append((_working_receipt_key(_session_key, d), _wm))
 
         # 与 MemoryManager / recall_shortterm 保持同一生命周期排除规则。
         # 被更正/不可用的原始记录继续留档，但不参与巩固、聚合或重新激活。
@@ -1381,7 +1414,10 @@ def _consolidate_locked() -> dict:
         #   失败不影响后面任何一步。
         try:
             _st = _load_json(SHORT_TERM_PATH)
-            _st_rows = [d for d in (_st.get("memories", []) or [])
+            _st_all = _st.get("memories", []) or []
+            _st_excluded = [d for d in _st_all
+                            if d.get("mem_type") in ("superseded", "unavailable")]
+            _st_rows = [d for d in _st_all
                         if d.get("mem_type") not in ("superseded", "unavailable")]
             if _st_rows:
                 _st_mems = [MemoryItem.from_dict(d) for d in _st_rows]
@@ -1395,7 +1431,7 @@ def _consolidate_locked() -> dict:
                           % (_pre["total"], _pre.get("fill", 0),
                              _pre.get("clear", 0), _pre.get("move", 0)))
                     _save_json(SHORT_TERM_PATH,
-                               {"memories": [m.to_dict() for m in _st_mems]})
+                               _with_memories(_st, [m.to_dict() for m in _st_mems] + _st_excluded))
         except Exception as _pe:
             stats["episodes_pre_heal_error"] = "%s: %s" % (
                 type(_pe).__name__, _pe)
@@ -1450,11 +1486,12 @@ def _consolidate_locked() -> dict:
         #   20~39 → level 1（快衰减 = 边缘记忆，能想起但很快淡出）
         #   <20  → 丢弃（纯噪音）
         # 这样「短期记忆直接进边缘层，靠 level 决定遗忘速度」，而不是二选一。
-        _working_done_ids = set()
-        for new_mem in working_list:
+        _working_done_keys = set()
+        _working_receipts = active_data.setdefault("_operation_receipts", {})
+        for _wkey, new_mem in working_entries:
             # 已确认进入长期库的内容不再重复巩固；来源仍留在工作台直到过期/淘汰。
-            if "_已巩固" in (new_mem.tags or []):
-                _working_done_ids.add(new_mem.mem_id)
+            if "_已巩固" in (new_mem.tags or []) or _wkey in _working_receipts:
+                _working_done_keys.add(_wkey)
                 continue
             score = _calc_consolidation_score(new_mem)
             # 2026-11-08 修（巡检第九轮发现）：原来这里是字面量 20，
@@ -1474,12 +1511,17 @@ def _consolidate_locked() -> dict:
                 level, init_strength = 2, 55.0
             else:
                 level, init_strength = 1, 35.0
+            _w_expire = current_ts + max(14 * 86400, float(getattr(new_mem, "ttl", 86400) or 86400) + 14 * 86400)
             dup_idx = _find_duplicate(new_mem, active_list)
             if dup_idx >= 0:
                 exist_mem = active_list[dup_idx]
                 exist_mem.strength = min(100.0, exist_mem.strength + 15)
                 exist_mem.last_active = current_ts
                 exist_mem.tags = list(set(exist_mem.tags + new_mem.tags))
+                _working_receipts[_wkey] = {
+                    "state": "merged", "mem_ids": [exist_mem.mem_id],
+                    "at": current_ts, "expires_at": _w_expire,
+                }
                 stats["updated"] += 1
             else:
                 new_mem.mem_type = "long_term"
@@ -1515,9 +1557,13 @@ def _consolidate_locked() -> dict:
                         # 判不了就留空，不阻断写入
                         pass
                 active_list.append(new_mem)
+                _working_receipts[_wkey] = {
+                    "state": "committed", "mem_ids": [new_mem.mem_id],
+                    "at": current_ts, "expires_at": _w_expire,
+                }
                 stats["consolidated"] += 1
             # 去重更新也算已处理；标记只控制生命周期，不改变记忆语义。
-            _working_done_ids.add(new_mem.mem_id)
+            _working_done_keys.add(_wkey)
 
         # ── 2026-11-10 提级方案（T3）：处理待巩固队列 ─────────────────
         #
@@ -1770,11 +1816,34 @@ def _consolidate_locked() -> dict:
 
         # 2.5 冷存反向巡检：按同一个未召回策略检查旧档案。
         #   被明确保护的旧冷存记忆走统一唤醒转换，而不是任意把强度改成 35。
+        from services.deletion_service import excluded as _is_deleted, load as _load_deletions
+        from services.recall_policy import inactive_revision, private_record as _is_private, row_of
+        _del_index = _load_deletions()
+
+        def _is_inactive_row(obj):
+            row = row_of(obj)
+            return inactive_revision(row) or _is_deleted(row, index=_del_index)
+
+        _active_mem_ids = {m.mem_id for m in remain_active if m.mem_id}
         rescue = []
         keep_cold = []
         for m in cold_list:
-            if (getattr(m, "archive_reason", "") in ("episode_retention", "historical_recovery")):
+            if m.mem_id and m.mem_id in _active_mem_ids:
+                # 上轮在 active 写盘后、cold 收敛前中断留下的重复冷副本，直接收敛。
+                continue
+            if _is_inactive_row(m):
+                # 已更正/失效的冷存历史记录保留在冷库供 as_of 审计，既不复活也不误删。
                 keep_cold.append(m)
+                continue
+            if (getattr(m, "archive_reason", "") in ("episode_retention", "historical_recovery", "tool_card_superseded")):
+                keep_cold.append(m)
+                continue
+            if getattr(m, "content_source", "") == "explicit_correction" and getattr(m, "corrects", None):
+                if _is_private(m):
+                    keep_cold.append(m)
+                else:
+                    rescue.append(_awake_cold_memory(m, current_ts))
+                    stats["rescued_from_cold"] = stats.get("rescued_from_cold", 0) + 1
                 continue
             if should_drop(m):
                 stats["dropped_noise"] = stats.get("dropped_noise", 0) + 1
@@ -1793,7 +1862,8 @@ def _consolidate_locked() -> dict:
             valid_working = []
             for d in sess_info.get("working_memory", []):
                 mem = MemoryItem.from_dict(d)
-                if mem.mem_id in _working_done_ids and "_已巩固" not in (mem.tags or []):
+                _wkey = _working_receipt_key(sess_id, d)
+                if _wkey in _working_done_keys and "_已巩固" not in (mem.tags or []):
                     mem.tags = list(mem.tags or []) + ["_已巩固"]
                 if current_ts - mem.create_time <= mem.ttl:
                     valid_working.append(mem.to_dict())
@@ -1858,110 +1928,159 @@ def _consolidate_locked() -> dict:
         #     · 已经在长期库里的同 key 记录，只更新最后时间，不重复插入
         _tool_promoted = 0
         _tool_skipped = 0
+        _tool_promoted_ids = set()
+        _retired_or_corrected_ids = set()
+        for _pool_rows in (active_data.get("memories", []), cold_data.get("memories", []), st_data.get("memories", [])):
+            for _row in (_pool_rows or []):
+                if isinstance(_row, dict) and _row.get("mem_id") and _is_inactive_row(_row):
+                    _retired_or_corrected_ids.add(str(_row.get("mem_id")))
+
         if getattr(config, "TOOL_CARD_PROMOTE_ENABLED", True):
             try:
                 from collections import defaultdict as _dd
+                import re as _re2
                 _keep_per = int(getattr(config, "TOOL_CARD_PROMOTE_KEEP_PER_ACTION", 1))
                 _proc_cat = getattr(config, "TOOL_CARD_PROMOTE_CATEGORY", "procedure")
 
-                # 收集候选：成功的工具卡
-                _cands = []
-                for d in st_data.get("memories", []):
-                    if str(d.get("source") or "") != "tool_result":
-                        continue
-                    tr = d.get("tool_result") or {}
-                    if str(tr.get("status") or d.get("status") or "") != "succeeded":
-                        continue
-                    if not str(d.get("content") or "").strip():
-                        continue
-                    _tool = str(tr.get("tool") or "")
-                    _act = str(tr.get("action") or "")
-                    # 没有结构化字段的老卡片，从文本里恢复工具名与动作名
-                    if not _tool or not _act:
-                        import re as _re
-                        if not _tool:
-                            _m = _re.search(r"\[工具\]\s*([a-z_][a-z0-9_]*)", str(d.get("content")))
-                            _tool = _m.group(1) if _m else ""
-                        if not _act:
-                            _ma = _re.search(r"\[操作\]\s*([^\[\n]+)", str(d.get("content")))
-                            _act = _ma.group(1).strip() if _ma else ""
-                    if not _tool:
-                        continue
-                    _cands.append((d, _tool, _act))
+                def _extract_proc_key(obj):
+                    is_dict = isinstance(obj, dict)
+                    sid = str((obj.get("session_id") if is_dict else getattr(obj, "session_id", "")) or "")
+                    tr_obj = obj.get("tool_result") if is_dict else getattr(obj, "tool_result", None)
+                    tr_obj = tr_obj if isinstance(tr_obj, dict) else {}
+                    t_val = str(tr_obj.get("tool") or "").strip()
+                    a_val = str(tr_obj.get("action") or "").strip()
+                    txt = str((obj.get("content") if is_dict else getattr(obj, "content", "")) or "")
+                    if not t_val:
+                        m1 = _re2.search(r"\[工具\]\s*([a-zA-Z_][a-zA-Z0-9_.\-]*)", txt)
+                        t_val = m1.group(1) if m1 else ""
+                    if not a_val:
+                        m2 = _re2.search(r"\[操作\]\s*([^\[\n]+)", txt)
+                        a_val = m2.group(1).strip() if m2 else ""
+                    return (sid, t_val, a_val) if t_val else None
 
-                if _cands:
-                    import re as _re2
-                    def _extract_proc_key(obj):
-                        tr_obj = getattr(obj, "tool_result", None) if not isinstance(obj, dict) else obj.get("tool_result")
-                        tr_obj = tr_obj if isinstance(tr_obj, dict) else {}
-                        t_val = str(tr_obj.get("tool") or "")
-                        a_val = str(tr_obj.get("action") or "")
-                        txt = str((obj.get("content") if isinstance(obj, dict) else getattr(obj, "content", "")) or "")
-                        if not t_val:
-                            m1 = _re2.search(r"\[工具\]\s*([a-z_][a-z0-9_]*)", txt)
-                            t_val = m1.group(1) if m1 else ""
-                        if not a_val:
-                            m2 = _re2.search(r"\[操作\]\s*([^\[\n]+)", txt)
-                            a_val = m2.group(1).strip() if m2 else ""
-                        return (t_val, a_val) if t_val else None
-
-                    # 按工具+动作分组，每组保留最新的 N 条
-                    _groups = _dd(list)
-                    for item in _cands:
-                        _groups[(item[1], item[2])].append(item)
-                    _picked = []
-                    for _k, _items in _groups.items():
-                        _items.sort(key=lambda x: float(x[0].get("create_time") or 0), reverse=True)
-                        _picked.extend(_items[:_keep_per])
-                        _tool_skipped += max(0, len(_items) - _keep_per)
-
-                    # 已在长期库里的同 key 记录（避免重复插入，命中时刷新已有卡片的 last_active）
-                    _existing_by_key = {}
-                    _existing_ids = set()
+                if _keep_per > 0:
+                    _existing_by_key = _dd(list)
                     for _r in remain_active:
-                        _existing_ids.add(str(getattr(_r, "mem_id", "") or ""))
-                        if str(getattr(_r, "category", "") or "") == _proc_cat:
-                            _rk = _extract_proc_key(_r)
-                            if _rk:
-                                _existing_by_key[_rk] = _r
+                        if str(getattr(_r, "category", "") or "") != _proc_cat:
+                            continue
+                        if _is_inactive_row(_r) or getattr(_r, "corrects", None):
+                            continue
+                        if not (str(getattr(_r, "source", "") or "") == "tool_result"
+                                or "工具卡提升" in (getattr(_r, "tags", None) or [])):
+                            continue
+                        _rk = _extract_proc_key(_r)
+                        if _rk is not None:
+                            _existing_by_key[_rk].append(_r)
 
-                    for _d, _tool, _act in _picked:
-                        try:
-                            _sm = MemoryItem.from_dict(_d)
-                        except Exception:
+                    _cold_ids = {str(m.mem_id) for m in cold_list if m.mem_id}
+                    _st_cands_by_key = _dd(list)
+                    for d in st_data.get("memories", []):
+                        if str(d.get("source") or "") != "tool_result":
                             continue
-                        # 去重：同 mem_id 或同 (tool, action) 已经存在时，只刷新已有卡片时间并跳过
-                        _k = (_tool, _act)
-                        _ex = _existing_by_key.get(_k)
-                        if str(_sm.mem_id or "") in _existing_ids or _ex is not None:
-                            if _ex is not None:
-                                try:
-                                    _ex.last_active = max(
-                                        float(getattr(_ex, "last_active", 0) or 0),
-                                        float(_sm.create_time or current_ts),
-                                    )
-                                except Exception:
-                                    pass
-                            _tool_skipped += 1
+                        tr = d.get("tool_result") or {}
+                        if str(tr.get("status") or d.get("status") or "") != "succeeded":
                             continue
-                        _sm.mem_type = "long_term"
-                        _sm.category = _proc_cat
-                        _sm.strength = max(46.0, min(100.0, float(_sm.strength or 60.0)))
-                        _sm.last_active = current_ts
-                        _sm.consolidation_level = max(int(_sm.consolidation_level or 2), 2)
-                        if "工具卡提升" not in (_sm.tags or []):
-                            _sm.tags = list(_sm.tags or []) + ["工具卡提升"]
-                        remain_active.append(_sm)
-                        _existing_ids.add(str(_sm.mem_id or ""))
-                        _existing_by_key[_k] = _sm
-                        _tool_promoted += 1
+                        if not str(d.get("content") or "").strip():
+                            continue
+                        _mid = str(d.get("mem_id") or "")
+                        if _mid in _cold_ids:
+                            _tool_promoted_ids.add(_mid)
+                            continue
+                        if _is_inactive_row(d) or (_mid and _mid in _retired_or_corrected_ids):
+                            continue
+                        if _is_private(d):
+                            continue
+                        _refs = [str(ref) for ref in (d.get("source_turns") or []) + (d.get("out_turns") or [])]
+                        if any(ref in _retired_or_corrected_ids for ref in _refs):
+                            continue
+                        _k = _extract_proc_key(d)
+                        if _k is None:
+                            continue
+                        _st_cands_by_key[_k].append(d)
+
+                    _displaced_active_ids = set()
+                    _all_keys = set(_st_cands_by_key.keys()) | {
+                        _k for _k, _items in _existing_by_key.items() if len(_items) > _keep_per
+                    }
+                    for _k in _all_keys:
+                        _by_id = {}
+                        _st_ids_for_key = set()
+                        for _ex in _existing_by_key.get(_k, []):
+                            _eid = str(getattr(_ex, "mem_id", "") or "")
+                            if _eid:
+                                _by_id[_eid] = ("existing", float(getattr(_ex, "create_time", 0) or 0), _ex)
+                        for _d in _st_cands_by_key.get(_k, []):
+                            _mid = str(_d.get("mem_id") or "")
+                            if _mid:
+                                _st_ids_for_key.add(_mid)
+                            if _mid and _mid in _by_id:
+                                continue
+                            _key_id = _mid or ("anon_%d" % len(_by_id))
+                            _by_id[_key_id] = ("shortterm", float(_d.get("create_time") or 0), _d)
+
+                        _ranked = sorted(
+                            _by_id.items(),
+                            key=lambda kv: (kv[1][1], kv[0]),
+                            reverse=True,
+                        )
+                        _winners = _ranked[:_keep_per]
+                        _losers = _ranked[_keep_per:]
+
+                        for _id, (_kind, _ct, _obj) in _winners:
+                            if _kind == "existing":
+                                if _id in _st_ids_for_key:
+                                    _tool_promoted_ids.add(_id)
+                                continue
+                            try:
+                                _sm = MemoryItem.from_dict(_obj)
+                            except Exception:
+                                continue
+                            _sm.mem_type = "long_term"
+                            _sm.category = _proc_cat
+                            _sm.strength = max(46.0, min(100.0, float(_sm.strength or 60.0)))
+                            _sm.last_active = current_ts
+                            _sm.consolidation_level = max(int(_sm.consolidation_level or 2), 2)
+                            if "工具卡提升" not in (_sm.tags or []):
+                                _sm.tags = list(_sm.tags or []) + ["工具卡提升"]
+                            remain_active.append(_sm)
+                            if _sm.mem_id:
+                                _tool_promoted_ids.add(str(_sm.mem_id))
+                            _tool_promoted += 1
+
+                        for _id, (_kind, _ct, _obj) in _losers:
+                            if _kind == "existing":
+                                _displaced_active_ids.add(_id)
+                                # 若旧版曾把同 ID 留在短期池，旧活跃卡移入冷存时一并移出短期副本，避免 shortterm/cold 分叉。
+                                if _id:
+                                    _tool_promoted_ids.add(_id)
+                                _obj.archived_at = current_ts
+                                _obj.archive_reason = "tool_card_superseded"
+                                if not any(getattr(c, "mem_id", None) == _obj.mem_id for c in cold_list):
+                                    cold_list.append(_obj)
+                            else:
+                                _tool_skipped += 1
+
+                    if _displaced_active_ids:
+                        remain_active[:] = [
+                            _r for _r in remain_active
+                            if str(getattr(_r, "mem_id", "") or "") not in _displaced_active_ids
+                        ]
             except Exception as _e:
                 stats["tool_card_promote_error"] = type(_e).__name__
         stats["tool_card_promoted"] = _tool_promoted
         stats["tool_card_skipped"] = _tool_skipped
 
+        _remain_active_ids = {str(getattr(m, "mem_id", "") or "") for m in remain_active if getattr(m, "mem_id", None)}
+        _excluded_st_rows = []
         for d in st_data.get("memories", []):
-            if d.get("mem_type") in ("superseded", "unavailable"):
+            _d_mid = str(d.get("mem_id") or "")
+            if _d_mid and _d_mid in _tool_promoted_ids:
+                # 已提升到长期活跃库，从短期池移除，避免同 ID 落在两池。
+                continue
+            if (d.get("mem_type") in ("superseded", "unavailable")
+                    or d.get("status") in ("superseded", "unavailable")
+                    or d.get("corrected_by") or d.get("superseded_by")):
+                _excluded_st_rows.append(d)
                 continue
             try:
                 sm = MemoryItem.from_dict(d)
@@ -1998,9 +2117,19 @@ def _consolidate_locked() -> dict:
             if cur >= _ST_FORGET:
                 st_keep.append(sm.to_dict())
                 continue
+            # 到期了：已退役/已更正记录与未中选工具卡不得绕过规则进入长期活跃库。
+            if _is_inactive_row(d) or (_d_mid and _d_mid in _retired_or_corrected_ids):
+                st_dropped += 1
+                continue
+            if sm.source == "tool_result" and getattr(config, "TOOL_CARD_PROMOTE_ENABLED", True):
+                st_dropped += 1
+                continue
             # 到期了：看它是什么形态（不看字数）
             cat, _imp = _classify(sm.content or "", sm.source or "")
             if cat in KEEP_CATS_L3 or cat in KEEP_CATS_L2:
+                if _d_mid and _d_mid in _remain_active_ids:
+                    # 上轮活跃库已落盘但短期层尚未收敛，跳过重复提升。
+                    continue
                 target_level = 3 if cat in KEEP_CATS_L3 else 2
                 sm.mem_type = "long_term"
                 # 强度抬到对应档位的可用水平（L3 高一些，因为它衰减慢、地板高）
@@ -2011,18 +2140,17 @@ def _consolidate_locked() -> dict:
                 if "短期转长期" not in (sm.tags or []):
                     sm.tags = list(sm.tags or []) + ["短期转长期"]
                 remain_active.append(sm)
+                if _d_mid:
+                    _remain_active_ids.add(_d_mid)
                 st_promoted += 1
             else:
                 st_dropped += 1
-        # 未到期的写回文件；到期已处理的（promoted 去了长期库 / dropped 丢弃）不再保留。
-        # 已聚合碎片到期后从短期池移除；档的 source_turns 保留为历史来源引用。
-        _excluded_st_rows = [d for d in st_data.get("memories", [])
-                             if d.get("mem_type") in ("superseded", "unavailable")]
-        from services.evidence_store import preserve as preserve_evidence
+        # 先准备短期写回文档（保留 _operation_receipts 等元数据），等活跃/冷存目标落盘后再收敛短期来源。
         _retained_st_ids = {r.get('mem_id') for r in st_keep + st_aggregated_kept + _excluded_st_rows}
-        preserve_evidence([r for r in st_data.get('memories', [])
-                           if r.get('mem_id') not in _retained_st_ids])
-        _save_json(_ST_PATH, {"memories": st_keep + st_aggregated_kept + _excluded_st_rows})
+        _st_to_preserve = [r for r in st_data.get('memories', [])
+                           if r.get('mem_id') not in _retained_st_ids
+                           and str(r.get('mem_id') or '') not in _tool_promoted_ids]
+        _st_out = _with_memories(st_data, st_keep + st_aggregated_kept + _excluded_st_rows)
         stats["shortterm_promoted"] = st_promoted
         stats["shortterm_dropped"] = st_dropped
         stats["shortterm_kept"] = len(st_keep) + len(st_aggregated_kept)
@@ -2048,12 +2176,17 @@ def _consolidate_locked() -> dict:
         # 被排除记录保留原貌供审计，但不进入 remain_active 的衰减/迁移/复活流程。
         _excluded_active_rows = [d for d in active_data.get("memories", [])
                                  if d.get("mem_type") in ("superseded", "unavailable")]
+        _excluded_cold_rows = [d for d in cold_data.get("memories", [])
+                               if d.get("mem_type") in ("superseded", "unavailable")]
         active_data["memories"] = [m.to_dict() for m in remain_active] + _excluded_active_rows
-        cold_data["memories"] = [m.to_dict() for m in cold_list]
+        cold_data["memories"] = [m.to_dict() for m in cold_list] + _excluded_cold_rows
+        # 先落盘目标（冷/热双向安全迁移），再收敛短期与工作记忆来源，最后确认 pending。
+        _save_active_cold_transition(active_data, cold_data, previous_active, previous_cold)
+        if _st_to_preserve:
+            from services.evidence_store import preserve as preserve_evidence
+            preserve_evidence(_st_to_preserve)
+        _save_json(_ST_PATH, _st_out)
         _save_json(WORKING_MEM_PATH, working_data)
-        # Save the destination before removing records from the source.
-        _save_json(LONG_TERM_COLD_PATH, cold_data)
-        _save_json(LONG_TERM_ACTIVE_PATH, active_data)
 
         # 先让长期库成为事实，再移除已处理的 pending。
         # 如果这里失败，异常会继续向上抛，由入口释放而不是丢队列。

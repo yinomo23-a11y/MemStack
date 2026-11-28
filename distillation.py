@@ -448,9 +448,15 @@ def _source_snapshot():
         except FileNotFoundError:
             rows = []
         pools.append(rows)
-    # Prefer a live record if an older copy also remains in the archive.
+    from services.recall_policy import prefer_incoming_revision
+    pool_sources = {}
     for rows in reversed(pools):
-        sources.update((str(row['mem_id']), row) for row in rows if row.get('mem_id'))
+        for row in rows:
+            if row.get('mem_id'):
+                mid = str(row['mem_id'])
+                if prefer_incoming_revision(pool_sources.get(mid), row):
+                    pool_sources[mid] = row
+    sources.update(pool_sources)
     return sources, pools
 
 
@@ -505,7 +511,10 @@ def _tool_card_rows(scope, *, raw, sources):
             if not re.search(r'(用|调用|通过|拿)\s*' + tool_name_re.pattern, text):
                 continue
         # Check the original record before projection can replace its private category.
-        if not _source_allowed(r, context, sources, session_bound=False):
+        canonical = sources.get(str(mid))
+        if (canonical is None
+                or not _source_allowed(canonical, context, sources, session_bound=False)
+                or not _source_allowed(r, context, sources, session_bound=False)):
             continue
         out.append(_tool_procedure_view(r))
     return out
@@ -513,13 +522,22 @@ def _tool_card_rows(scope, *, raw, sources):
 
 def gather(scope, *, snapshot=None):
     _path(scope)
-    sources, (active, shortterm, _cold) = snapshot if snapshot is not None else _source_snapshot()
+    sources, (active, shortterm, cold) = snapshot if snapshot is not None else _source_snapshot()
     context = RecallContext()
     rows = [r for r in active
             if r.get('mem_id') and r.get('mem_type') != 'distilled'
+            and sources.get(str(r['mem_id'])) is r
             and eligible(r, context, pool='active', sources=sources)]
-    rows.extend(_tool_card_rows(scope, raw=shortterm, sources=sources))
-    return {r['mem_id']: r for r in rows}
+    gathered = {r['mem_id']: r for r in rows}
+    for row in cold:
+        mid = row.get('mem_id')
+        if (mid and sources.get(str(mid)) is row
+                and row.get('content_source') == 'explicit_correction'
+                and eligible(row, context, pool='cold', sources=sources)):
+            gathered.setdefault(mid, row)
+    for row in _tool_card_rows(scope, raw=shortterm, sources=sources):
+        gathered.setdefault(row['mem_id'], row)
+    return gathered
 
 
 def evidence_hash(rows, *, model='', prompt_version='v1', rule_version='v1'):

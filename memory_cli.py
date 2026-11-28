@@ -154,10 +154,33 @@ def _shortterm_cmd(sub: str, payload: dict):
         return _out({"ok": True, "total": 0, "items": [], "note": "短期记忆层为空"})
     with open(SHORT_TERM_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
+    from config import LONG_TERM_ACTIVE_PATH, LONG_TERM_COLD_PATH
     from services.deletion_service import excluded, load as load_deletions
+    from services.recall_policy import inactive_revision
     deletions = load_deletions()
+
+    def _row_inactive(row):
+        return (not isinstance(row, dict) or inactive_revision(row)
+                or excluded(row, index=deletions))
+
+    # Pre-existing duplicate IDs across pools: an active/cold correction or
+    # retirement supersedes the stale short-term copy on read without production cleanup.
+    _superseded_elsewhere = set()
+    for _pool_path in (LONG_TERM_ACTIVE_PATH, LONG_TERM_COLD_PATH):
+        if not _os.path.exists(_pool_path):
+            continue
+        try:
+            with open(_pool_path, "r", encoding="utf-8") as _pf:
+                _pdata = json.load(_pf)
+            for _prow in _pdata.get("memories", []):
+                _pmid = str(_prow.get("mem_id") or "")
+                if _pmid and _row_inactive(_prow):
+                    _superseded_elsewhere.add(_pmid)
+        except Exception:
+            pass
+
     mems = [MemoryItem.from_dict(row) for row in data.get("memories", [])
-            if not excluded(row, index=deletions)]
+            if not _row_inactive(row) and str(row.get("mem_id") or "") not in _superseded_elsewhere]
     now = datetime.datetime.now().timestamp()
 
     if sub == "stats":

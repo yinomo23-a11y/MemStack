@@ -98,6 +98,7 @@ def main(argv):
     for name, script in (("e2e_empty_store", "tests/e2e_empty_store.py"),
                          ("memory_tools", "test_memory_tools_integration.py"),
                          ("distillation_regressions", "test_distillation_regressions.py"),
+                         ("memory_reliability", "test_audit_repairs_4.py"),
                          ("privacy_gate", "tools/privacy_scan.py")):
         total += 1
         ok, out = run(script)

@@ -18,6 +18,24 @@ That is the whole setup. An empty checkout bootstraps itself on first use.
 
 ---
 
+## Memory reliability fixes
+
+- Consolidation writes destination pools before removing source records. Retries
+  after an interrupted write preserve cold memories and avoid repeating working
+  memory promotion or reinforcement.
+- Short-term deduplication and write receipts use the originating session.
+  Identical messages and operation IDs in different groups stay independent.
+  Existing receipts replay when the original record confirms session ownership.
+- Consolidation preserves short-term write receipts and other file metadata.
+  Retrying a write after consolidation no longer counts another mention.
+- Consolidation keeps the newest successful tool results per session, tool, and
+  action. It archives displaced results and removes stale short-term copies.
+  Cold results support atomic corrections, and `as_of` queries retain the
+  version effective at the requested time. Recall and distillation honor
+  corrections even if an older copy remains in another pool.
+
+---
+
 ## Why it is shaped like this
 
 Most "agent memory" is a vector store with a wrapper: everything gets embedded,

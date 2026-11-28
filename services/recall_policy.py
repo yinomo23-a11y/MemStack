@@ -21,6 +21,21 @@ def private_record(record, pool=None):
 private = private_record
 
 
+def inactive_revision(record):
+    row = row_of(record)
+    return bool(
+        row.get('deleted') or row.get('recall_excluded')
+        or row.get('corrected_by') or row.get('superseded_by')
+        or row.get('status') in ('superseded', 'deleted', 'unavailable', 'rejected')
+        or row.get('mem_type') in ('superseded', 'unavailable')
+    )
+
+
+def prefer_incoming_revision(existing, incoming):
+    # An inactive revision sets visibility for stale copies of the same ID.
+    return existing is None or not inactive_revision(existing) or inactive_revision(incoming)
+
+
 def revision(record):
     r = row_of(record)
     keys = ('content', 'source', 'source_turns', 'out_turns', 'session_id',

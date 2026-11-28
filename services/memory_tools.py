@@ -2,7 +2,7 @@ import json
 import time
 
 from services.evidence_semantics import timestamp
-from services.recall_policy import RecallContext, select
+from services.recall_policy import RecallContext, eligible, prefer_incoming_revision, select
 
 
 def window(start, end):
@@ -111,9 +111,28 @@ def cold_search(manager, args, embedding_func):
     with manager.lock:
         archived = manager._load_cold_mems()
         active = manager._load_active_mems()
+        shortterm = manager._load_shortterm_mems()
         sources = load()
-        sources.update({m.mem_id: m for m in [*archived, *active]})
+        canonical_pool = {}
+        for pool_name, pool_items in (('cold', archived), ('shortterm', shortterm),
+                                      ('active', active)):
+            for m in pool_items:
+                mid = str(m.mem_id)
+                if mid not in canonical_pool or prefer_incoming_revision(sources[mid], m):
+                    sources[mid] = m
+                    canonical_pool[mid] = pool_name
+        for r in getattr(manager, '_non_recall_rows', []) or []:
+            if isinstance(r, dict) and r.get('mem_id') and r.get('mem_type') in ('superseded', 'unavailable'):
+                mid = str(r['mem_id'])
+                sources[mid] = r
+                canonical_pool[mid] = 'active'
         candidates = select(archived, context, pool="cold", sources=sources)
+        candidates = [
+            m for m in candidates
+            if canonical_pool.get(str(m.mem_id)) == 'cold'
+            or eligible(sources[str(m.mem_id)], context,
+                        pool=canonical_pool[str(m.mem_id)], sources=sources)
+        ]
         if find_slot(query)[0]:
             candidates = [m for m in candidates if supports(vars(m), query)]
         if awake:

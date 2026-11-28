@@ -26,7 +26,7 @@ def correct(manager, mem_id, content, *, operation_id, reason, effective_from=No
         transaction = json.dumps([mem_id, content, reason, requested_start, subject, predicate,
                                   session_id, requested_end], ensure_ascii=False)
     with manager.lock:
-        for pool in ('active', 'shortterm'):
+        for pool in ('active', 'shortterm', 'cold'):
             path = manager._pool_path(pool)
             try:
                 with open(path, encoding='utf-8') as f:
@@ -82,5 +82,6 @@ def correct(manager, mem_id, content, *, operation_id, reason, effective_from=No
             atomic_write_json(path, data)
             manager.active_mems = manager._load_active_mems()
             manager.shortterm_mems = manager._load_shortterm_mems()
+            manager.cold_mems = manager._load_cold_mems()
             return result
     raise KeyError(mem_id)

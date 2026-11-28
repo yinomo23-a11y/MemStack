@@ -378,7 +378,7 @@ class MemoryManager:
         if excluded(dict(kwargs,content=content)):
             return {'saved':False,'reason':'source_deleted','mem_id':None}
         from config import SHORT_TERM_PATH
-        from services.write_receipts import previous, record
+        from services.write_receipts import previous, record, fingerprint as _receipt_fp
         operation_id = kwargs.pop("operation_id", None)
         from schema import classify_importance
 
@@ -468,23 +468,118 @@ class MemoryManager:
         if self.embedding_func:
             new_mem.embedding = self.embedding_func(content)
 
+        def _lookup_receipt_owner_session(mem_id, st_doc):
+            """Locate trusted session ownership for a legacy bare-key receipt.
+
+            Searches short-term, active, cold, evidence archive, and
+            pending_longterm. Returns (True, normalized_session_id) only when
+            at least one matching record exists and all matches agree on scope;
+            returns (False, None) if unattributed or ambiguous.
+            """
+            mid = str(mem_id or "").strip()
+            if not mid:
+                return False, None
+            matched_sessions = set()
+            found = False
+
+            def _scan_rows(rows):
+                nonlocal found
+                for row in (rows or []):
+                    if isinstance(row, dict) and str(row.get("mem_id") or "").strip() == mid:
+                        found = True
+                        matched_sessions.add(str(row.get("session_id") or ""))
+
+            _scan_rows((st_doc or {}).get("memories", []))
+            import config as _rcfg
+            for _pool_path in (
+                getattr(_rcfg, "LONG_TERM_ACTIVE_PATH", None),
+                getattr(_rcfg, "LONG_TERM_COLD_PATH", None),
+            ):
+                if not _pool_path or not os.path.exists(_pool_path):
+                    continue
+                try:
+                    with open(_pool_path, "r", encoding="utf-8") as _pf:
+                        _pdata = json.load(_pf)
+                    _scan_rows(_pdata.get("memories", []))
+                except (FileNotFoundError, OSError, ValueError):
+                    continue
+            try:
+                from services.evidence_store import load as _load_ev
+                _ev_row = _load_ev().get(mid)
+                if isinstance(_ev_row, dict):
+                    found = True
+                    matched_sessions.add(str(_ev_row.get("session_id") or ""))
+            except Exception:
+                pass
+            try:
+                from pending_longterm import read_pending as _read_pending
+                for _pr in _read_pending():
+                    if not isinstance(_pr, dict):
+                        continue
+                    _pmem = _pr.get("memory") if isinstance(_pr.get("memory"), dict) else {}
+                    if str(_pmem.get("mem_id") or "").strip() == mid:
+                        found = True
+                        _psid = _pmem.get("session_id") if _pmem.get("session_id") is not None else _pr.get("session_id")
+                        matched_sessions.add(str(_psid or ""))
+            except Exception:
+                pass
+            if not found or len(matched_sessions) != 1:
+                return False, None
+            return True, next(iter(matched_sessions))
+
         with self.lock:
             if os.path.exists(SHORT_TERM_PATH):
                 with open(SHORT_TERM_PATH, "r", encoding="utf-8") as f:
                     data = json.load(f)
             else:
                 data = {"memories": []}
-            prior = previous(data, operation_id, content)
+            _sid = str(getattr(new_mem, "session_id", None) or "")
+            _scoped_op = json.dumps(["session", _sid, str(operation_id)], ensure_ascii=False) if operation_id else None
+            prior = previous(data, _scoped_op, content, namespace='shortterm-write')
             if prior is not None:
                 return prior
+            if operation_id:
+                _legacy_receipt = data.get("_operation_receipts", {}).get("write:" + str(operation_id))
+                if isinstance(_legacy_receipt, dict):
+                    _legacy_mid = (_legacy_receipt.get("result") or {}).get("mem_id")
+                    _has_owner, _owner_sid = _lookup_receipt_owner_session(_legacy_mid, data)
+                    if _has_owner and _owner_sid == _sid:
+                        if _legacy_receipt.get("sha256") != _receipt_fp(content):
+                            raise ValueError("operation_id reused for different content")
+                        return dict(_legacy_receipt["result"], duplicate=True)
             mems = [MemoryItem.from_dict(d) for d in data.get("memories", [])]
 
             # ── 去重分支 ─────────────────────────────────────
             # 2026-11-07 补的：同一句对话写两次就存两条。
             # 2026-11-09 P0：三个「提及」字段必须同步，且不再动 strength。
-            dup = next((m for m in mems
-                        if (m.content or "").strip() == (content or "").strip()),
-                       None)
+            # 去重严格限定在同一 session_id 边界内（空/None 仅与 legacy 无 session_id 互认），
+            # 且不命中已退役/已更正/不可用记录，避免跨会话串 ID 与串归属。
+            from services.deletion_service import load as _load_deletions
+            _del_index = _load_deletions()
+            _norm_content = (content or "").strip()
+            candidates = [
+                m for m in mems
+                 if (m.content or "").strip() == _norm_content
+                 and str(getattr(m, "session_id", None) or "") == _sid
+                 and bool(getattr(m, "is_private", False)) == bool(getattr(new_mem, "is_private", False))
+                 and not getattr(m, "deleted", False)
+                 and not getattr(m, "corrected_by", None)
+                 and not getattr(m, "superseded_by", None)
+                 and getattr(m, "status", "active") not in ("superseded", "deleted", "unavailable", "rejected")
+                 and getattr(m, "mem_type", "") not in ("superseded", "unavailable")
+                 and not excluded(m.to_dict(), index=_del_index)
+            ]
+            dup = None
+            if candidates:
+                from common.io import load_json
+                from services.recall_policy import inactive_revision
+                candidate_ids = {memory.mem_id for memory in candidates}
+                inactive_ids = set()
+                for pool in ('active', 'cold'):
+                    rows = load_json(self._pool_path(pool)).get("memories", [])
+                    inactive_ids.update(row["mem_id"] for row in rows
+                                        if row.get("mem_id") in candidate_ids and inactive_revision(row))
+                dup = next((memory for memory in candidates if memory.mem_id not in inactive_ids), None)
             if dup is not None:
                 _now = datetime.now().timestamp()
                 # ⚠️ 不再改 dup.strength —— 强度只由时间派生，见 decay_logic
@@ -494,7 +589,8 @@ class MemoryManager:
                 _hist.append(_now)
                 dup.mention_history = _hist
                 data["memories"] = [m.to_dict() for m in mems]
-                record(data, operation_id, content, {"saved": True, "reason": "dedup_updated", "mem_id": dup.mem_id})
+                record(data, _scoped_op, content, {"saved": True, "reason": "dedup_updated", "mem_id": dup.mem_id},
+                       namespace="shortterm-write")
                 _atomic_write_json(SHORT_TERM_PATH, data)
                 self.shortterm_mems = mems
                 return {"saved": True, "reason": "dedup_updated",
@@ -566,7 +662,8 @@ class MemoryManager:
                 mems = keep
 
             data["memories"] = [m.to_dict() for m in mems]
-            record(data, operation_id, content, {"saved": evicted is None, "reason": "capacity_evicted" if evicted else "created", "mem_id": new_mem.mem_id})
+            record(data, _scoped_op, content, {"saved": evicted is None, "reason": "capacity_evicted" if evicted else "created", "mem_id": new_mem.mem_id},
+                   namespace="shortterm-write")
             _atomic_write_json(SHORT_TERM_PATH, data)
         self.shortterm_mems = mems
 

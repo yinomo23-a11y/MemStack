@@ -96,16 +96,26 @@ def recall_core(mgr, query, emotion=None, entities=None, *,
         view._request_context = context
 
         from services.evidence_store import load as load_evidence
+        from services.recall_policy import prefer_incoming_revision
         sources = load_evidence()
         pool_lookup = {}
         # A live record takes precedence over an interrupted migration's archive copy.
         for attr, pool, _ in pools:
             for m in getattr(view, attr, []) or []:
-                sources[str(m.mem_id)] = m
-                pool_lookup[m.mem_id] = pool
+                mid = str(m.mem_id)
+                if m.mem_id not in pool_lookup or prefer_incoming_revision(sources[mid], m):
+                    sources[mid] = m
+                    pool_lookup[m.mem_id] = pool
+        for row in getattr(view, '_non_recall_rows', []) or []:
+            if row.get('mem_id') and row.get('mem_type') in ('superseded', 'unavailable'):
+                sources[str(row['mem_id'])] = row
+                pool_lookup[row['mem_id']] = 'active'
         for attr, pool, _ in pools:
             candidates = (m for m in getattr(view, attr, []) or [] if pool_lookup[m.mem_id] == pool)
             setattr(view, attr, copy.deepcopy(select(candidates, context, pool=pool, sources=sources)))
+        view.active_mems.extend(
+            m for m in view.cold_mems
+            if getattr(m, 'content_source', '') == 'explicit_correction')
     except Exception as exc:
         return {'results':[], 'errors':['召回前置失败: '+type(exc).__name__+': '+str(exc)[:120]],
                 'degraded':True, 'side_effects':{}, '_context':context}
